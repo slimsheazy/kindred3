@@ -1,0 +1,140 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Kindred</title>
+    <meta name="description" content="An AI-powered space for couples to deepen their connection." />
+    <meta name="theme-color" content="#FDFCF0" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      :root { 
+        --midnight: #FDFCF0; 
+        --pillow-charcoal: #F5F4E8;
+        --cream: #121212; 
+        --muted-green: #3D8C50;
+        --muted-pink: #D44D85;
+        --mouse-x: 50%;
+        --mouse-y: 50%;
+      }
+
+      body.midnight-mode {
+        --midnight: #121212;
+        --pillow-charcoal: #1A1A1A;
+        --cream: #FDFCF0;
+        --muted-green: #A8FFB5;
+        --muted-pink: #FF85B3;
+      }
+
+      html { 
+        scroll-behavior: smooth; 
+        font-size: 16px; 
+      }
+      body { 
+        font-family: 'Cardo', serif; 
+        background-color: var(--midnight); 
+        color: var(--cream); 
+        margin: 0; 
+        overflow-x: hidden; 
+        -webkit-tap-highlight-color: transparent; 
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        transition: background-color 0.8s ease, color 0.8s ease;
+      }
+      h1, h2, h3, h4, .heading-font { 
+        font-family: 'Montserrat', sans-serif; 
+        letter-spacing: -0.01em; 
+        font-weight: 600; 
+      }
+      
+      .text-clamp-4xl { font-size: clamp(1.85rem, 6vw, 2.5rem); line-height: 1.15; }
+      .text-clamp-5xl { font-size: clamp(2.35rem, 9vw, 3.5rem); line-height: 1.1; }
+      .text-clamp-6xl { font-size: clamp(3rem, 11vw, 5rem); line-height: 1; }
+      .text-clamp-7xl { font-size: clamp(4rem, 14vw, 7rem); line-height: 1; }
+
+      .orb { position: fixed; width: 80vw; height: 80vw; border-radius: 50%; filter: blur(120px); opacity: 0.12; z-index: -1; pointer-events: none; will-change: transform; }
+      .orb-pink { background: var(--muted-pink); top: -20%; right: -20%; animation: float-pink 25s infinite alternate ease-in-out; }
+      .orb-green { background: var(--muted-green); bottom: -20%; left: -20%; animation: float-green 30s infinite alternate ease-in-out; }
+      
+      /* Interactive Layers */
+      .sensory-layer {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0.6;
+        mix-blend-mode: soft-light;
+      }
+
+      /* Light Sheen */
+      body:not(.midnight-mode) .sensory-layer {
+        background: radial-gradient(
+          circle at var(--mouse-x) var(--mouse-y),
+          rgba(255, 255, 255, 0.8) 0%,
+          rgba(255, 255, 255, 0) 40%
+        );
+      }
+
+      /* Midnight Spotlight */
+      body.midnight-mode .sensory-layer {
+        opacity: 0.4;
+        mix-blend-mode: overlay;
+        background: radial-gradient(
+          circle at var(--mouse-x) var(--mouse-y),
+          var(--muted-green) 0%,
+          transparent 35%
+        );
+      }
+      
+      @keyframes float-pink { 0% { transform: translate(0, 0) rotate(0deg) scale(1); } 100% { transform: translate(-30%, 30%) rotate(15deg) scale(1.1); } }
+      @keyframes float-green { 0% { transform: translate(0, 0) rotate(0deg) scale(1); } 100% { transform: translate(30%, -30%) rotate(-15deg) scale(1.2); } }
+      
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      .animate-fade-in { animation: fade-in 0.6s ease-out forwards; }
+      .animate-fade-in-up { animation: fade-in-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+      input::placeholder, textarea::placeholder { color: rgba(18, 18, 18, 0.25); }
+      body.midnight-mode input::placeholder, body.midnight-mode textarea::placeholder { color: rgba(253, 252, 240, 0.25); }
+
+      .glass-card { background: rgba(18, 18, 18, 0.03); border: 1px solid rgba(18, 18, 18, 0.05); backdrop-filter: blur(10px); }
+      body.midnight-mode .glass-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
+      
+      .micro-copy { font-size: 0.75rem; letter-spacing: 0.05em; font-weight: 500; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.95.3",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4",
+    "markdown-to-jsx": "https://esm.sh/markdown-to-jsx@^9.7.3",
+    "framer-motion": "https://esm.sh/framer-motion@^11.11.11"
+  }
+}
+</script>
+</head>
+<body class="min-h-screen antialiased">
+    <div class="sensory-layer"></div>
+    <div class="orb orb-pink"></div>
+    <div class="orb orb-green"></div>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

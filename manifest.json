@@ -1,0 +1,18 @@
+
+{
+  "short_name": "Kindred",
+  "name": "Kindred Connect",
+  "description": "An AI-powered space for couples to deepen their connection.",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#FDFCF0",
+  "background_color": "#FDFCF0"
+}

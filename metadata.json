@@ -1,0 +1,7 @@
+{
+  "name": "KINDRED 3",
+  "description": "A collaborative space for couples to deepen their connection —powered by Kindred AI.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
