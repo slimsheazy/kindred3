@@ -13,6 +13,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.0.0",
+    "framer-motion": "^11.0.0",
     "markdown-to-jsx": "^9.7.3",
     "@google/genai": "^1.27.0",
     "@supabase/supabase-js": "^2.48.0"
