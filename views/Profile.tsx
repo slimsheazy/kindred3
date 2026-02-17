@@ -3,6 +3,7 @@ import { UserData } from '../types';
 import { initializeGeminiContext } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
 import { isSupabaseConfigured, updateSupabaseConfig, clearSupabaseConfig } from '../services/supabase';
+import { NotificationService } from '../services/notificationService';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface ProfileProps {
@@ -15,7 +16,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   const [activeMessage, setActiveMessage] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
-  const [isConfiguringCloud, setIsConfiguringCloud] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(NotificationService.getPermissionStatus());
   
   const [partnerCodeInput, setPartnerCodeInput] = useState('');
   const [syncTimestamp, setSyncTimestamp] = useState<number>(Date.now());
@@ -75,6 +76,35 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
     }
   };
 
+  const shareInvite = async () => {
+    if (!userData) return;
+    const shareData = {
+      title: 'Join me on Kindred',
+      text: `Connect with me on Kindred. My invite code is: ${userData.id}`,
+      url: window.location.origin
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        copyCode();
+      }
+    } catch (err) {
+      console.error('Error sharing', err);
+    }
+  };
+
+  const enableNotifications = async () => {
+    const permission = await NotificationService.requestPermission();
+    setNotificationPermission(permission);
+    if (permission === 'granted') {
+      showMessage("Notifications enabled.");
+    } else {
+      showMessage("Permission denied.");
+    }
+  };
+
   const setVibe = async (vibeLabel: string) => {
     if (!userData) return;
     await cloudService.updateVibe(userData.id, vibeLabel);
@@ -113,18 +143,6 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
         setIsLinking(false);
         showMessage("Handshake initiated.");
         window.location.reload();
-    }
-  };
-
-  const handleSaveCloudConfig = () => {
-    if (dbUrl.trim() && dbKey.trim()) {
-      updateSupabaseConfig(dbUrl.trim(), dbKey.trim());
-    }
-  };
-
-  const handleDisconnectCloud = () => {
-    if (window.confirm("Switch back to local-only mode?")) {
-      clearSupabaseConfig();
     }
   };
 
@@ -192,14 +210,38 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
           </div>
       </div>
 
-      <div className="mb-24 space-y-8 p-12 bg-black/2 dark:bg-white/2 border border-black/5 dark:border-white/5 rounded-[3.5rem] shadow-inner">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Your Invite Code</span>
-            <button onClick={copyCode} className="w-full flex justify-between items-center py-5 px-8 bg-black/5 dark:bg-white/5 rounded-2xl hover:bg-black/10 dark:hover:bg-white/10 transition-all border border-black/5 dark:border-white/5">
-                <span className="font-mono text-sm font-bold tracking-wider">{userData?.id}</span>
-                <span className="text-xs font-bold uppercase opacity-40">{copySuccess ? 'Copied' : 'Copy'}</span>
-            </button>
-            <p className="text-sm opacity-30 mt-6 leading-relaxed">Give this code to your partner. When they enter it in their "Merge" settings, your spaces will synchronize in real-time.</p>
+      <div className="mb-16 space-y-8 p-12 bg-black/2 dark:bg-white/2 border border-black/5 dark:border-white/5 rounded-[3.5rem] shadow-inner">
+          <div className="space-y-8">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Invitation</span>
+              <div className="flex flex-col gap-4">
+                <button onClick={copyCode} className="w-full flex justify-between items-center py-5 px-8 bg-black/5 dark:bg-white/5 rounded-2xl hover:bg-black/10 dark:hover:bg-white/10 transition-all border border-black/5 dark:border-white/5">
+                    <span className="font-mono text-sm font-bold tracking-wider">{userData?.id}</span>
+                    <span className="text-xs font-bold uppercase opacity-40">{copySuccess ? 'Copied' : 'Copy Code'}</span>
+                </button>
+                <button 
+                  onClick={shareInvite} 
+                  className="w-full py-5 px-8 bg-[var(--accent-green)] text-[var(--bg-primary)] rounded-2xl font-bold uppercase text-xs tracking-widest shadow-xl transition-all heading-font"
+                >
+                  Send Invitation
+                </button>
+              </div>
+              <p className="text-sm opacity-30 mt-6 leading-relaxed">Share this link to initiate real-time synchronization with your partner's space.</p>
+            </div>
+
+            <div className="pt-8 border-t border-current border-opacity-5">
+              <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Device Resonance</span>
+              <button 
+                onClick={enableNotifications}
+                className="w-full py-5 px-8 border border-current border-opacity-10 rounded-2xl flex justify-between items-center hover:bg-current hover:bg-opacity-5 transition-all"
+              >
+                <span className="text-xs font-bold uppercase tracking-widest opacity-60">PWA Notifications</span>
+                <span className={`text-xs font-bold uppercase tracking-widest ${notificationPermission === 'granted' ? 'text-[var(--accent-green)]' : 'opacity-20'}`}>
+                  {notificationPermission === 'granted' ? 'Enabled' : 'Enable'}
+                </span>
+              </button>
+              <p className="text-[10px] opacity-20 mt-4 leading-relaxed uppercase tracking-wider font-bold">Recommended for iPhone Home Screen Apps</p>
+            </div>
           </div>
       </div>
 

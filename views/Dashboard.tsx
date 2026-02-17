@@ -1,10 +1,9 @@
-
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import DailyPrompt from '../components/DailyPrompt';
 import AICoach from '../components/AICoach';
 import GrowthLog from '../components/GrowthLog';
-import { UserData, CourseModule, BondScore, View, Lesson, Activity, WeeklySynthesis } from '../types';
-import { generateLearningPath, generateWeeklySynthesis, generateNextEvolutionPhase } from '../services/geminiService';
+import { UserData, CourseModule, BondScore, View, Lesson, Activity } from '../types';
+import { generateLearningPath } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
 import Markdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -21,34 +20,33 @@ const BondMap: React.FC<{
 }> = ({ scores, originScores, showHistory }) => {
     const categories = ['Communication', 'Intimacy', 'Trust', 'Conflict', 'Shared Vision'];
     
-    const getPoints = (dataScores: BondScore[], isOrigin = false) => {
-        const size = 260;
-        const center = size / 2;
-        const radius = size * 0.35;
-        return categories.map((cat, i) => {
-            let val = 3.5;
-            if (isOrigin && originScores) {
-                // Find absolute earliest score record (timestamp 1)
-                const catData = originScores.filter(s => s.category === cat).sort((a, b) => a.timestamp - b.timestamp)[0];
-                val = catData ? catData.score : 3.5;
-            } else if (dataScores && dataScores.length > 0) {
-                // Find latest score record
-                const catData = dataScores.filter(s => s.category === cat).sort((a, b) => b.timestamp - a.timestamp)[0];
-                val = catData ? catData.score : 3.5;
-            }
-            const angle = (i * 2 * Math.PI) / categories.length - Math.PI / 2;
-            const r = (val / 10) * radius;
-            return { x: center + r * Math.cos(angle), y: center + r * Math.sin(angle) };
-        }).map(p => `${p.x},${p.y}`).join(' ');
-    };
-
-    const currentPoints = useMemo(() => getPoints(scores), [scores]);
-    const originPoints = useMemo(() => originScores ? getPoints(originScores, true) : '', [originScores]);
-    
     const size = 260;
     const center = size / 2;
     const radius = size * 0.35;
 
+    const getPoints = useCallback((dataScores: BondScore[], isOrigin = false) => {
+        return categories.map((cat, i) => {
+            let val = 3.5;
+            // Improved search logic to find the specific category record
+            const matchingRecords = dataScores.filter(s => s.category.toLowerCase().trim() === cat.toLowerCase().trim());
+            
+            if (isOrigin) {
+                const origin = matchingRecords.find(s => s.timestamp === 1);
+                val = origin ? origin.score : (matchingRecords[0]?.score || 3.5);
+            } else {
+                const latest = [...matchingRecords].sort((a, b) => b.timestamp - a.timestamp)[0];
+                val = latest ? latest.score : 3.5;
+            }
+            
+            const angle = (i * 2 * Math.PI) / categories.length - Math.PI / 2;
+            const r = (val / 10) * radius;
+            return { x: center + r * Math.cos(angle), y: center + r * Math.sin(angle) };
+        }).map(p => `${p.x},${p.y}`).join(' ');
+    }, [radius, center, categories]);
+
+    const currentPoints = useMemo(() => getPoints(scores), [scores, getPoints]);
+    const originPoints = useMemo(() => getPoints(scores, true), [scores, getPoints]);
+    
     return (
         <div className="py-12 border-y border-current border-opacity-5 flex flex-col items-center">
             <div className="flex justify-between w-full px-4 mb-8">
@@ -70,7 +68,7 @@ const BondMap: React.FC<{
                         return <line key={i} x1={center} y1={center} x2={center + radius * Math.cos(angle)} y2={center + radius * Math.sin(angle)} stroke="currentColor" strokeWidth="0.5" strokeOpacity="0.05" />;
                     })}
                     <AnimatePresence>
-                        {showHistory && originPoints && (
+                        {showHistory && (
                             <motion.polygon 
                                 initial={{ opacity: 0 }} 
                                 animate={{ opacity: 0.25 }} 
@@ -107,13 +105,12 @@ const BondMap: React.FC<{
 const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
   const [courseModules, setCourseModules] = useState<CourseModule[]>([]);
   const [bondScores, setBondScores] = useState<BondScore[]>([]);
-  const [originScores, setOriginScores] = useState<BondScore[]>([]);
   const [showHistoryOverlay, setShowHistoryOverlay] = useState(true);
   const [isLoadingPath, setIsLoadingPath] = useState(false);
+  const [partnerArchitecting, setPartnerArchitecting] = useState(false);
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
-  const [activeActivity, setActiveActivity] = useState<Activity | null>(null);
-  const [partnerPresence, setPartnerPresence] = useState<any | null>(null);
   const [isPartnerOnline, setIsPartnerOnline] = useState(false);
+  const [partnerPresence, setPartnerPresence] = useState<any | null>(null);
   const [showPulseAnimation, setShowPulseAnimation] = useState(false);
   const [selectedModule, setSelectedModule] = useState<CourseModule | null>(null);
   const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
@@ -124,31 +121,42 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
     setTimeout(() => setShowPulseAnimation(false), 2000);
   }, []);
 
-  useEffect(() => {
-    const initializeDashboard = async () => {
-      const code = userData?.partnerCode || userData?.id || 'default';
-      const scores = await cloudService.getBondScores(code);
-      setBondScores(scores);
+  const initializeDashboard = useCallback(async () => {
+    const code = userData?.partnerCode || userData?.id || 'default';
+    const scores = await cloudService.getBondScores(code);
+    setBondScores(scores);
 
-      // Origin filter (timestamp 1)
-      const origins = scores.filter(s => s.timestamp === 1);
-      setOriginScores(origins.length > 0 ? origins : scores);
-
-      const savedPath = await cloudService.getLearningPath(code);
-      let currentPath = savedPath;
-      if (currentPath.length === 0) {
+    const savedPath = await cloudService.getLearningPath(code);
+    
+    if (savedPath.length === 0) {
+      // Check if partner is already building it
+      const lock = await cloudService.getPathGenerationStatus(code);
+      if (lock && lock.userId !== userData?.id) {
+        setPartnerArchitecting(true);
         setIsLoadingPath(true);
-        currentPath = await generateLearningPath();
+      } else {
+        setIsLoadingPath(true);
+        setPartnerArchitecting(false);
+        // Set local/remote lock
+        if (userData?.id) await cloudService.setPathGenerationLock(code, true, userData.id);
+        
+        const currentPath = await generateLearningPath();
         setCourseModules(currentPath);
         await cloudService.saveLearningPath(code, currentPath);
+        
+        if (userData?.id) await cloudService.setPathGenerationLock(code, false, userData.id);
         setIsLoadingPath(false);
-      } else {
-        setCourseModules(currentPath);
       }
-      
-      setCompletedLessonIds(cloudService.getCompletedLessons());
-      setActiveActivity(await cloudService.getActiveActivity(code));
-    };
+    } else {
+      setCourseModules(savedPath);
+      setIsLoadingPath(false);
+      setPartnerArchitecting(false);
+    }
+    
+    setCompletedLessonIds(cloudService.getCompletedLessons());
+  }, [userData]);
+
+  useEffect(() => {
     initializeDashboard();
     
     let unsubscribePresence = () => {};
@@ -167,24 +175,28 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
       });
     }
 
-    const updateInterval = setInterval(async () => {
-        if (!userData) return;
-        const code = userData.partnerCode || userData.id;
-        setBondScores(await cloudService.getBondScores(code));
-    }, 10000);
+    // Refresh dashboard on sync events
+    const unsubscribeSync = cloudService.subscribeToPartnerSpace(userData?.partnerCode || 'default', () => {
+      initializeDashboard();
+    });
 
-    return () => { clearInterval(updateInterval); unsubscribePresence(); unsubscribePulses(); };
-  }, [userData, triggerPulseEffect]);
+    return () => { 
+      unsubscribePresence(); 
+      unsubscribePulses(); 
+      unsubscribeSync();
+    };
+  }, [userData, triggerPulseEffect, initializeDashboard]);
 
   const growthSummary = useMemo(() => {
       const categories = ['Communication', 'Intimacy', 'Trust', 'Conflict', 'Shared Vision'];
       return categories.map(cat => {
-          const current = bondScores.filter(s => s.category === cat).sort((a, b) => b.timestamp - a.timestamp)[0]?.score || 3.5;
-          const origin = originScores.find(s => s.category === cat)?.score || 3.5;
+          const catArr = bondScores.filter(s => s.category.toLowerCase().trim() === cat.toLowerCase().trim()).sort((a, b) => b.timestamp - a.timestamp);
+          const current = catArr[0]?.score || 3.5;
+          const origin = bondScores.find(s => s.category.toLowerCase().trim() === cat.toLowerCase().trim() && s.timestamp === 1)?.score || 3.5;
           const delta = current - origin;
           return { cat, delta, current };
       });
-  }, [bondScores, originScores]);
+  }, [bondScores]);
 
   const enrichedModules = useMemo(() => {
     return courseModules.map((m) => {
@@ -211,7 +223,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
   };
 
   return (
-    <div className="px-6 py-12 max-w-xl mx-auto relative transition-colors duration-700">
+    <div className="px-6 py-12 max-w-xl mx-auto relative transition-colors duration-700 min-h-screen">
         <div className={`fixed inset-0 pointer-events-none z-[100] transition-opacity duration-1000 ${showPulseAnimation ? 'opacity-100' : 'opacity-0'}`}>
             <div className="absolute inset-0 border-[12px] border-[var(--accent-green)] border-opacity-10 animate-[heartbeat_2s_infinite]" />
         </div>
@@ -233,7 +245,7 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
 
         <DailyPrompt />
         
-        <BondMap scores={bondScores} originScores={originScores} showHistory={showHistoryOverlay} />
+        <BondMap scores={bondScores} showHistory={showHistoryOverlay} />
         
         <div className="mb-16 grid grid-cols-1 gap-4 pt-4 text-[var(--text-primary)]">
             <h3 className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-30 text-center mb-6 heading-font">The Evolution Path</h3>
@@ -260,10 +272,16 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
         <div className="py-16 text-[var(--text-primary)]">
             <div className="flex justify-between items-center mb-12">
                 <h2 className="text-xs font-bold uppercase tracking-[0.2em] opacity-30 heading-font">Shared Evolution</h2>
-                {isLoadingPath && <span className="text-[10px] font-bold uppercase text-[var(--accent-green)] animate-pulse">Architecting Evolution...</span>}
+                {isLoadingPath && (
+                   <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-bold uppercase text-[var(--accent-green)] animate-pulse">
+                         {partnerArchitecting ? `${userData?.partnerName} is architecting your path...` : 'Building your shared horizon...'}
+                      </span>
+                   </div>
+                )}
             </div>
             <div className="space-y-8">
-                {enrichedModules.map((m, i) => (
+                {enrichedModules.length > 0 ? enrichedModules.map((m, i) => (
                     <button 
                       key={m.id || i} 
                       disabled={m.status === 'locked'} 
@@ -291,7 +309,13 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
                             <motion.div initial={{ width: 0 }} animate={{ width: `${m.progress}%` }} className="h-full bg-[var(--accent-green)]" transition={{ duration: 2 }} />
                         </div>
                     </button>
-                ))}
+                )) : (
+                    !isLoadingPath && (
+                       <div className="text-center py-10 border border-dashed border-current border-opacity-10 rounded-[2.5rem] opacity-30">
+                          <p className="text-xs font-bold uppercase tracking-widest italic">The path is silent. Initiate a shared focus in Space.</p>
+                       </div>
+                    )
+                )}
             </div>
         </div>
 
@@ -343,10 +367,17 @@ const Dashboard: React.FC<DashboardProps> = ({ userData, onNavigate }) => {
                 <Markdown>{selectedLesson.longContent}</Markdown>
              </div>
              <div className="fixed bottom-12 left-0 right-0 px-8 flex justify-center">
-                <button onClick={() => completeLesson(selectedLesson.id)} className="w-full max-w-sm py-6 bg-current text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl active:scale-95 transition-all">Mark as Complete</button>
+                <button onClick={() => completeLesson(selectedLesson.id)} className="w-full max-w-sm py-6 bg-current text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl active:scale-95 transition-all heading-font">Mark as Complete</button>
              </div>
           </div>
         )}
+        <style>{`
+            @keyframes heartbeat {
+                0% { transform: scale(1); opacity: 0.1; }
+                50% { transform: scale(1.02); opacity: 0.15; }
+                100% { transform: scale(1); opacity: 0.1; }
+            }
+        `}</style>
     </div>
   );
 };

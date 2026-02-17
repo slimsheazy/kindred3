@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, UserData } from './types';
 import BottomNav from './components/BottomNav';
 import Dashboard from './views/Dashboard';
@@ -12,89 +12,68 @@ import EsotericLens from './views/EsotericLens';
 import ConflictNavigator from './components/ConflictNavigator';
 import { initializeGeminiContext } from './services/geminiService';
 import { cloudService } from './services/cloudService';
-import { supabase } from './services/supabase';
+import { NotificationService } from './services/notificationService';
+import { supabase, isSupabaseConfigured } from './services/supabase';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.Dashboard);
   const [hasOnboarded, setHasOnboarded] = useState<boolean | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [showMediation, setShowMediation] = useState(false);
+  const lastSyncRef = useRef<number>(Date.now());
 
   const syncState = useCallback(() => {
     setRefreshTrigger(prev => prev + 1);
-  }, []);
-
-  // Sensory Engine: Mouse & Tilt
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      const x = (e.clientX / window.innerWidth) * 100;
-      const y = (e.clientY / window.innerHeight) * 100;
-      document.documentElement.style.setProperty('--mouse-x', `${x}%`);
-      document.documentElement.style.setProperty('--mouse-y', `${y}%`);
-    };
-
-    const handleOrientation = (e: DeviceOrientationEvent) => {
-      if (e.beta && e.gamma) {
-        const x = ((e.gamma + 45) / 90) * 100;
-        const y = ((e.beta + 45) / 90) * 100;
-        document.documentElement.style.setProperty('--mouse-x', `${x}%`);
-        document.documentElement.style.setProperty('--mouse-y', `${y}%`);
+    
+    if (userData && (document.visibilityState === 'hidden' || (window.navigator as any).standalone)) {
+      const now = Date.now();
+      if (now - lastSyncRef.current > 10000) {
+        NotificationService.showNotification('Kindred Update', {
+          body: `Activity detected in your shared space with ${userData.partnerName}.`,
+          tag: 'sync-update'
+        });
+        lastSyncRef.current = now;
       }
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    if (window.DeviceOrientationEvent) {
-      window.addEventListener('deviceorientation', handleOrientation);
     }
+  }, [userData]);
 
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('deviceorientation', handleOrientation);
-    };
-  }, []);
-
+  // Load user data on mount with Cloud Recovery
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      const onboarded = localStorage.getItem('kindred_has_onboarded') === 'true';
-      const savedData = localStorage.getItem('kindred_user_data');
-      
-      if (session && savedData) {
-        const parsed = JSON.parse(savedData);
+    const initApp = async () => {
+      // 1. Check local storage first
+      const saved = localStorage.getItem('kindred_user_data');
+      if (saved) {
+        const parsed = JSON.parse(saved);
         setUserData(parsed);
+        setHasOnboarded(true);
         initializeGeminiContext(parsed);
-        setHasOnboarded(true);
-
-        if (parsed.partnerCode) {
-           cloudService.subscribeToPartnerSpace(parsed.partnerCode, syncState);
-        }
-      } else if (onboarded && savedData) {
-        const parsed = JSON.parse(savedData);
-        setUserData(parsed);
-        setHasOnboarded(true);
-      } else {
-        setHasOnboarded(false);
+        return;
       }
+
+      // 2. Fallback: Check for Supabase session (Recovery from Magic Link)
+      if (isSupabaseConfigured) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const profile = await cloudService.getProfile(session.user.id);
+          if (profile) {
+            localStorage.setItem('kindred_user_data', JSON.stringify(profile));
+            setUserData(profile);
+            setHasOnboarded(true);
+            initializeGeminiContext(profile);
+            return;
+          }
+        }
+      }
+
+      setHasOnboarded(false);
     };
 
-    checkSession();
+    initApp();
+  }, [refreshTrigger]);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('kindred_user_data');
-        localStorage.removeItem('kindred_has_onboarded');
-        setUserData(null);
-        setHasOnboarded(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [syncState]);
-
-  // Apply Theme Class
+  // Theme synchronization with index.html body classes
   useEffect(() => {
-    // If user explicitly chooses 'light', we apply the class. Default is Midnight.
     if (userData?.theme === 'light') {
       document.body.classList.add('light-mode');
     } else {
@@ -102,66 +81,78 @@ const App: React.FC = () => {
     }
   }, [userData?.theme]);
 
-  const handleOnboardingComplete = useCallback((data: UserData) => {
-    setUserData(data);
-    initializeGeminiContext(data);
-    setHasOnboarded(true);
+  // Sensory Engine: Mouse Tracking
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      const x = (e.clientX / window.innerWidth) * 100;
+      const y = (e.clientY / window.innerHeight) * 100;
+      document.documentElement.style.setProperty('--mouse-x', `${x}%`);
+      document.documentElement.style.setProperty('--mouse-y', `${y}%`);
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  // Subscribe to partner space updates
+  useEffect(() => {
+    if (userData?.partnerCode) {
+      return cloudService.subscribeToPartnerSpace(userData.partnerCode, syncState);
+    }
+  }, [userData?.partnerCode, syncState]);
+
+  const handleOnboardingComplete = (data: UserData) => {
     localStorage.setItem('kindred_user_data', JSON.stringify(data));
-    localStorage.setItem('kindred_has_onboarded', 'true');
-    cloudService.signUp(data);
-  }, []);
+    setUserData(data);
+    setHasOnboarded(true);
+    initializeGeminiContext(data);
+  };
 
-  const handleReset = useCallback(async () => {
-    const confirmReset = window.confirm("Are you sure? This will sign you out of Kindred.");
-    if (confirmReset) {
+  const handleReset = async () => {
+    if (isSupabaseConfigured) {
       await supabase.auth.signOut();
-      localStorage.removeItem('kindred_user_data');
-      localStorage.removeItem('kindred_has_onboarded');
-      window.location.reload();
     }
-  }, []);
+    localStorage.removeItem('kindred_user_data');
+    setHasOnboarded(false);
+    setUserData(null);
+    document.body.classList.remove('light-mode');
+  };
 
-  const viewContent = useMemo(() => {
+  const renderView = () => {
+    if (showMediation) return <ConflictNavigator userData={userData} onClose={() => setShowMediation(false)} />;
+    
     switch (currentView) {
-      case View.Dashboard:
-        return <Dashboard key={refreshTrigger} userData={userData} onNavigate={setCurrentView} />;
-      case View.Activities:
-        return <ActivitiesView key={refreshTrigger} />;
-      case View.Journal:
-        return <Journal key={refreshTrigger} />;
-      case View.Quiz:
-        return <Quiz key={refreshTrigger} />;
-      case View.Goals:
-        return <Goals key={refreshTrigger} />;
-      case View.EsotericLens:
-        return <EsotericLens key={refreshTrigger} />;
-      case View.Profile:
-        return <Profile onReset={handleReset} onThemeChange={(t) => setUserData(prev => prev ? {...prev, theme: t} : null)} />;
-      case View.Mediation:
-        return <ConflictNavigator userData={userData} onClose={() => setCurrentView(View.Dashboard)} />;
-      default:
-        return <Dashboard userData={userData} onNavigate={setCurrentView} />;
+      case View.Dashboard: return <Dashboard userData={userData} onNavigate={setCurrentView} />;
+      case View.Journal: return <Journal />;
+      case View.Activities: return <ActivitiesView />;
+      case View.Goals: return <Goals />;
+      case View.Profile: return <Profile onReset={handleReset} onThemeChange={(t) => setUserData(prev => prev ? {...prev, theme: t} : null)} />;
+      case View.Quiz: return <Quiz />;
+      case View.EsotericLens: return <EsotericLens />;
+      default: return <Dashboard userData={userData} onNavigate={setCurrentView} />;
     }
-  }, [currentView, userData, handleReset, refreshTrigger]);
+  };
 
-  if (hasOnboarded === null) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#121212]">
-      <div className="w-8 h-8 border-2 border-white/10 border-t-[#A8FFB5] rounded-full animate-spin" />
-    </div>
-  );
-
-  if (!hasOnboarded) {
-    return <Onboarding onComplete={handleOnboardingComplete} />;
-  }
+  if (hasOnboarded === null) return null;
+  if (!hasOnboarded) return <Onboarding onComplete={handleOnboardingComplete} />;
 
   return (
-    <div className="min-h-screen font-sans flex flex-col max-w-lg mx-auto overflow-x-hidden transition-colors duration-700">
-      <main className="flex-grow pb-32 pt-4 px-4 animate-fade-in">
-        {viewContent}
+    <div className="min-h-screen transition-colors duration-1000 relative">
+      <main className="pb-32">
+        {renderView()}
       </main>
-      {currentView !== View.Mediation && (
-        <BottomNav currentView={currentView} setCurrentView={setCurrentView} />
+      
+      {currentView === View.Dashboard && !showMediation && (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[60]">
+              <button 
+                  onClick={() => setShowMediation(true)}
+                  className="px-8 py-3 bg-[var(--accent-pink)] text-[var(--bg-primary)] rounded-full text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl hover:scale-105 active:scale-95 transition-all heading-font"
+              >
+                  Initiate Mediation
+              </button>
+          </div>
       )}
+      
+      <BottomNav currentView={currentView} setCurrentView={setCurrentView} />
     </div>
   );
 };

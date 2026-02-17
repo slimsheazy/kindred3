@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { generateActivities, tagJournalEntry } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
 import type { Activity, JournalEntry, GrowthLog } from '../types';
@@ -15,14 +14,28 @@ const ActivitiesView: React.FC = () => {
   
   const vibes = ['Playful', 'Romantic', 'Deep', 'Adventurous', 'Relaxing'];
 
+  const refreshEngagedActivity = useCallback(async (user: any) => {
+    const partnerCode = user.partnerCode || user.id;
+    const active = await cloudService.getActiveActivity(partnerCode);
+    setEngagedActivity(active);
+  }, []);
+
   useEffect(() => {
     const savedUser = localStorage.getItem('kindred_user_data');
     if (savedUser) {
         const user = JSON.parse(savedUser);
         setUserData(user);
-        const partnerCode = user.partnerCode || user.id;
-        cloudService.getActiveActivity(partnerCode).then(setEngagedActivity);
+        refreshEngagedActivity(user);
+
+        // Real-time synchronization subscription
+        const unsubscribe = cloudService.subscribeToPartnerSpace(user.partnerCode || 'default', () => {
+            refreshEngagedActivity(user);
+        });
+        return () => unsubscribe();
     }
+  }, [refreshEngagedActivity]);
+
+  useEffect(() => {
     setLoading(true);
     generateActivities(activeVibe).then(data => { setActivities(data); setLoading(false); });
   }, [activeVibe]);
@@ -73,10 +86,13 @@ const ActivitiesView: React.FC = () => {
   };
 
   if (engagedActivity) {
+      const isPartnerSession = engagedActivity.startedBy !== userData?.id;
       return (
           <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in text-[var(--text-primary)]">
               <header className="mb-16">
-                    <span className="text-xs font-bold uppercase tracking-[0.4em] text-[var(--accent-green)] mb-2 block heading-font">Live Shared Session</span>
+                    <span className="text-xs font-bold uppercase tracking-[0.4em] text-[var(--accent-green)] mb-2 block heading-font">
+                        {isPartnerSession ? `${userData?.partnerName} Initiated Space` : 'Live Shared Session'}
+                    </span>
                     <h1 className="text-clamp-5xl font-light mb-6 leading-tight">{engagedActivity.title}</h1>
                     <div className="flex gap-6 items-center">
                         <span className="text-xs font-bold uppercase tracking-widest opacity-40 heading-font">{engagedActivity.duration}</span>

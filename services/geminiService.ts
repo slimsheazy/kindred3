@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserData, Activity, CourseModule, Lesson, QuizQuestion, MicroStep, JournalEntry, ChatMessage, BondScore, WeeklySynthesis, FoundationSummary } from "../types";
 
@@ -10,29 +9,31 @@ const getSystemPrompt = (context?: { journalEntries: JournalEntry[], bondScores:
   let dynamicPrompt = basePrompt;
   if (currentUserData) {
     const focusString = (currentUserData.focusAreas || []).join(', ');
-    // CRITICAL FIX: Explicitly command the AI to address the current user INDIVIDUALLY.
-    // We strictly define that the conversation is between Kindred and the LOGGED-IN user.
     dynamicPrompt = `${basePrompt} 
-    IMPORTANT: You are speaking EXCLUSIVELY to ${currentUserData.userName}. 
-    Do NOT address them collectively as "${currentUserData.userName} and ${currentUserData.partnerName}". 
-    Always address ${currentUserData.userName} individually (e.g., "Hello ${currentUserData.userName}", "What are your thoughts...").
-    Their partner's name is ${currentUserData.partnerName} for reference, but the focus of this dialogue is ${currentUserData.userName}'s perspective.
-    Relationship focus areas: ${focusString}.`;
+    CRITICAL IDENTITY PROTOCOL:
+    - You are speaking EXCLUSIVELY and INDIVIDUALLY to ${currentUserData.userName}.
+    - NEVER address the user and their partner as "we", "us", "you both", or "both of you".
+    - NEVER assume you are talking to a collective couple. You are ${currentUserData.userName}'s private confidant.
+    - Always use second-person singular (You, your) referring ONLY to ${currentUserData.userName}.
+    - Refer to ${currentUserData.partnerName} ONLY in the third person (e.g., "How do you think ${currentUserData.partnerName} felt about that?").
+    - Focus strictly on ${currentUserData.userName}'s personal internal emotional landscape and individual perspective.
+    - Their partner's name is ${currentUserData.partnerName}.
+    - Relationship focus areas: ${focusString}.`;
   }
 
   if (context) {
-    const entriesText = context.journalEntries.map(e => `[${e.date}]: ${e.text}`).join('\n');
+    const entriesText = context.journalEntries.map(e => `[${e.date} by ${e.author}]: ${e.text}`).join('\n');
     const scoresText = context.bondScores.map(s => `${s.category}: ${s.score.toFixed(1)}`).join(', ');
     
     dynamicPrompt += `\n\nLONG-TERM CONTEXT (The Foundation):
     ${context.foundationSummary || 'No foundation established yet.'}
 
-    RECENT MEMORIES:
+    RECENT MEMORIES (Check who wrote what):
     ${entriesText || 'No recent entries yet.'}
 
     CURRENT EQUILIBRIUM (1-10 scale): ${scoresText}
     
-    CRITICAL INSTRUCTION: Reference context but keep the tone personal to ${currentUserData?.userName}.`;
+    CRITICAL INSTRUCTION: Reference context but keep the tone strictly personal and singular to ${currentUserData?.userName}.`;
   }
   
   return dynamicPrompt;
@@ -73,6 +74,33 @@ export const getCoachingResponse = async (
         return response.text || "Kindred is observing silently. Please continue.";
     } catch (error) {
         return "Connection interrupted. Please verify your environment variables.";
+    }
+};
+
+export const generateMediationDebrief = async (transcript: string): Promise<string> => {
+    try {
+        const ai = getAiClient();
+        const prompt = `You are the Kindred Mediator. A high-tension voice session between ${currentUserData?.userName} and ${currentUserData?.partnerName} has just concluded.
+        
+        TRANSCRIPT FRAGMENTS:
+        "${transcript}"
+        
+        TASK:
+        1. Summarize the core conflict that was addressed.
+        2. Identify any emotional "Repairs" or moments of softening that occurred.
+        3. Provide a path forward for ${currentUserData?.userName} personally.
+        
+        TONE: Poetic, restorative, calm, and objective.
+        CRITICAL: Address ONLY ${currentUserData?.userName}. Refer to ${currentUserData?.partnerName} in the third person. Use Markdown.`;
+        
+        const response = await ai.models.generateContent({ 
+            model: 'gemini-3-pro-preview', 
+            contents: prompt,
+            config: { temperature: 0.6 }
+        });
+        return response.text || "The storm has passed, leaving behind a new landscape.";
+    } catch (error) {
+        return "The session has concluded. May the quiet return to your space.";
     }
 };
 

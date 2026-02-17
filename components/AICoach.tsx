@@ -1,8 +1,7 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { getCoachingResponse, analyzeInteractionForScores } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
-import type { ChatMessage, JournalEntry, BondScore, GrowthLog, FoundationSummary } from '../types';
+import type { ChatMessage, GrowthLog } from '../types';
 import Markdown from 'react-markdown';
 
 const AICoach: React.FC = () => {

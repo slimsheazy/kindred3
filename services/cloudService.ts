@@ -16,6 +16,54 @@ class CloudService {
     localStorage.setItem(key, JSON.stringify(data));
   }
 
+  // --- Profile & Authentication ---
+
+  async signUp(userData: UserData): Promise<UserData> {
+    if (this.useLocalStorageOnly) return userData;
+    try {
+      await supabase.from('profiles').upsert({
+        id: userData.id,
+        user_name: userData.userName,
+        partner_name: userData.partnerName,
+        partner_code: userData.partnerCode,
+        focus_areas: userData.focusAreas,
+        vibe: userData.vibe || 'Neutral',
+        last_active: new Date().toISOString(),
+        updated_at: new Date()
+      });
+    } catch (err) {
+      console.error("Supabase signup failed", err);
+    }
+    return userData;
+  }
+
+  async getProfile(userId: string): Promise<UserData | null> {
+    if (this.useLocalStorageOnly) return null;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (error || !data) return null;
+      
+      return {
+        id: data.id,
+        userName: data.user_name,
+        partnerName: data.partner_name,
+        yearsTogether: '', // Not stored in schema currently
+        focusAreas: data.focus_areas || [],
+        partnerCode: data.partner_code,
+        syncStatus: 'synced',
+        vibe: data.vibe,
+        theme: 'midnight' // Default
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
   // --- Foundation Summary ---
 
   async getLatestFoundationSummary(partnerCode: string): Promise<FoundationSummary | null> {
@@ -88,6 +136,45 @@ class CloudService {
     }
   }
 
+  async setPathGenerationLock(partnerCode: string, isGenerating: boolean, userId: string): Promise<void> {
+    const key = `kindred_path_lock_${partnerCode}`;
+    if (isGenerating) {
+      localStorage.setItem(key, JSON.stringify({ userId, timestamp: Date.now() }));
+    } else {
+      localStorage.removeItem(key);
+    }
+
+    if (!this.useLocalStorageOnly) {
+      if (isGenerating) {
+        await supabase.from('active_sessions').upsert({
+          partner_code: partnerCode,
+          activity: { type: 'path_generation', userId, startedAt: Date.now() },
+          updated_at: new Date()
+        });
+      } else {
+        const { data } = await supabase.from('active_sessions').select('activity').eq('partner_code', partnerCode).maybeSingle();
+        if (data?.activity?.type === 'path_generation') {
+           await supabase.from('active_sessions').delete().eq('partner_code', partnerCode);
+        }
+      }
+    }
+  }
+
+  async getPathGenerationStatus(partnerCode: string): Promise<{ isGenerating: boolean, userId: string } | null> {
+    const key = `kindred_path_lock_${partnerCode}`;
+    const local = localStorage.getItem(key);
+    const localData = local ? JSON.parse(local) : null;
+
+    if (!this.useLocalStorageOnly) {
+      const { data } = await supabase.from('active_sessions').select('activity').eq('partner_code', partnerCode).maybeSingle();
+      if (data?.activity?.type === 'path_generation') {
+        return { isGenerating: true, userId: data.activity.userId };
+      }
+    }
+    
+    return localData ? { isGenerating: true, userId: localData.userId } : null;
+  }
+
   // --- Growth Logs ---
 
   async saveGrowthLog(partnerCode: string, log: GrowthLog): Promise<void> {
@@ -125,27 +212,6 @@ class CloudService {
         delta: d.delta,
         context: d.context
     }));
-  }
-
-  // --- Profile & Presence ---
-
-  async signUp(userData: UserData): Promise<UserData> {
-    if (this.useLocalStorageOnly) return userData;
-    try {
-      await supabase.from('profiles').upsert({
-        id: userData.id,
-        user_name: userData.userName,
-        partner_name: userData.partnerName,
-        partner_code: userData.partnerCode,
-        focus_areas: userData.focusAreas,
-        vibe: userData.vibe || 'Neutral',
-        last_active: new Date().toISOString(),
-        updated_at: new Date()
-      });
-    } catch (err) {
-      console.error("Supabase signup failed", err);
-    }
-    return userData;
   }
 
   async updatePresence(data: any): Promise<void> {
@@ -193,23 +259,21 @@ class CloudService {
     return data.map(d => ({ category: d.category, score: d.score, timestamp: new Date(d.updated_at).getTime() }));
   }
 
-  // FIX: Dedicated initialization to prevent "10/10" and "Even Side" bugs
   async initializeBondScores(partnerCode: string, scores: Record<string, number>): Promise<void> {
     const key = `kindred_scores_${partnerCode}`;
     const initialRecords: BondScore[] = [];
     
     for (const [category, score] of Object.entries(scores)) {
-        // Save an "Origin" (timestamp 1)
-        initialRecords.push({ category, score: Math.min(10, Math.max(1, score)), timestamp: 1 });
-        // Save a "Current" (timestamp Date.now)
-        initialRecords.push({ category, score: Math.min(10, Math.max(1, score)), timestamp: Date.now() });
+        initialRecords.push({ category, score: Number(score), timestamp: 1 });
+        initialRecords.push({ category, score: Number(score), timestamp: Date.now() });
     }
     
     this.saveLocal(key, initialRecords);
     
     if (!this.useLocalStorageOnly) {
+        await supabase.from('bond_scores').delete().eq('partner_code', partnerCode);
         for (const record of initialRecords) {
-            await supabase.from('bond_scores').upsert({ 
+            await supabase.from('bond_scores').insert({ 
                 partner_code: partnerCode, 
                 category: record.category, 
                 score: record.score, 
@@ -221,7 +285,8 @@ class CloudService {
 
   async updateBondScore(partnerCode: string, category: string, delta: number): Promise<void> {
     const scores = await this.getBondScores(partnerCode);
-    const latest = scores.filter(s => s.category === category).sort((a,b) => b.timestamp - a.timestamp)[0];
+    const catRecords = scores.filter(s => s.category.toLowerCase().trim() === category.toLowerCase().trim());
+    const latest = [...catRecords].sort((a,b) => b.timestamp - a.timestamp)[0];
     const currentVal = latest ? latest.score : 3.5;
     const newVal = Math.min(10, Math.max(1, currentVal + delta));
     
@@ -298,6 +363,7 @@ class CloudService {
         return saved ? JSON.parse(saved) : null;
     }
     const { data } = await supabase.from('active_sessions').select('activity').eq('partner_code', partnerCode).maybeSingle();
+    if (data?.activity?.type === 'path_generation') return null;
     return data?.activity || null;
   }
 
