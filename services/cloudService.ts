@@ -1,4 +1,3 @@
-
 import { UserData, JournalEntry, Goal, BondScore, Lesson, ChatMessage, Activity, WeeklySynthesis, GrowthLog, FoundationSummary, CourseModule } from '../types';
 import { supabase, isSupabaseConfigured } from './supabase';
 import { RealtimeChannel } from '@supabase/supabase-js';
@@ -60,7 +59,7 @@ class CloudService {
     }
   }
 
-  // --- Learning Path (Infinite Generation Sync) ---
+  // --- Learning Path ---
 
   async getLearningPath(partnerCode: string): Promise<CourseModule[]> {
     if (this.useLocalStorageOnly) return this.getLocal<CourseModule>(`kindred_path_${partnerCode}`);
@@ -173,32 +172,87 @@ class CloudService {
   // --- Bond Scores ---
 
   async getBondScores(partnerCode: string): Promise<BondScore[]> {
+    const key = `kindred_scores_${partnerCode}`;
     if (this.useLocalStorageOnly) {
-        const scores = this.getLocal<BondScore>(`kindred_scores_${partnerCode}`);
+        const scores = this.getLocal<BondScore>(key);
         if (scores.length === 0) {
             const initial: BondScore[] = [
-                { category: 'Communication', score: 3.5, timestamp: Date.now() },
-                { category: 'Intimacy', score: 3.5, timestamp: Date.now() },
-                { category: 'Trust', score: 3.5, timestamp: Date.now() },
-                { category: 'Conflict', score: 3.5, timestamp: Date.now() },
-                { category: 'Shared Vision', score: 3.5, timestamp: Date.now() },
+                { category: 'Communication', score: 3.5, timestamp: 1 },
+                { category: 'Intimacy', score: 3.5, timestamp: 1 },
+                { category: 'Trust', score: 3.5, timestamp: 1 },
+                { category: 'Conflict', score: 3.5, timestamp: 1 },
+                { category: 'Shared Vision', score: 3.5, timestamp: 1 },
             ];
-            this.saveLocal(`kindred_scores_${partnerCode}`, initial);
+            this.saveLocal(key, initial);
             return initial;
         }
         return scores;
     }
     const { data } = await supabase.from('bond_scores').select('*').eq('partner_code', partnerCode);
-    if (!data || data.length === 0) return this.getLocal<BondScore>(`kindred_scores_${partnerCode}`);
+    if (!data || data.length === 0) return this.getLocal<BondScore>(key);
     return data.map(d => ({ category: d.category, score: d.score, timestamp: new Date(d.updated_at).getTime() }));
+  }
+
+  // FIX: Dedicated initialization to prevent "10/10" and "Even Side" bugs
+  async initializeBondScores(partnerCode: string, scores: Record<string, number>): Promise<void> {
+    const key = `kindred_scores_${partnerCode}`;
+    const initialRecords: BondScore[] = [];
+    
+    for (const [category, score] of Object.entries(scores)) {
+        // Save an "Origin" (timestamp 1)
+        initialRecords.push({ category, score: Math.min(10, Math.max(1, score)), timestamp: 1 });
+        // Save a "Current" (timestamp Date.now)
+        initialRecords.push({ category, score: Math.min(10, Math.max(1, score)), timestamp: Date.now() });
+    }
+    
+    this.saveLocal(key, initialRecords);
+    
+    if (!this.useLocalStorageOnly) {
+        for (const record of initialRecords) {
+            await supabase.from('bond_scores').upsert({ 
+                partner_code: partnerCode, 
+                category: record.category, 
+                score: record.score, 
+                updated_at: new Date(record.timestamp === 1 ? '1970-01-01' : Date.now()) 
+            });
+        }
+    }
   }
 
   async updateBondScore(partnerCode: string, category: string, delta: number): Promise<void> {
     const scores = await this.getBondScores(partnerCode);
-    const updated = scores.map(s => s.category === category ? { ...s, score: Math.min(10, Math.max(1, s.score + delta)), timestamp: Date.now() } : s);
+    const latest = scores.filter(s => s.category === category).sort((a,b) => b.timestamp - a.timestamp)[0];
+    const currentVal = latest ? latest.score : 3.5;
+    const newVal = Math.min(10, Math.max(1, currentVal + delta));
+    
+    const newRecord: BondScore = { category, score: newVal, timestamp: Date.now() };
+    const updatedHistory = [...scores, newRecord];
+    
+    this.saveLocal(`kindred_scores_${partnerCode}`, updatedHistory);
+    
+    if (!this.useLocalStorageOnly) {
+      await supabase.from('bond_scores').upsert({ 
+        partner_code: partnerCode, 
+        category, 
+        score: newVal, 
+        updated_at: new Date() 
+      }, { onConflict: 'partner_code,category' });
+    }
+  }
+
+  async setBondScore(partnerCode: string, category: string, score: number): Promise<void> {
+    const scores = await this.getBondScores(partnerCode);
+    const newRecord: BondScore = { category, score: Math.min(10, Math.max(1, score)), timestamp: Date.now() };
+    const updated = [...scores, newRecord];
+
     this.saveLocal(`kindred_scores_${partnerCode}`, updated);
     if (!this.useLocalStorageOnly) {
-      await supabase.from('bond_scores').upsert({ partner_code: partnerCode, category, score: updated.find(u => u.category === category)?.score || 3.5, updated_at: new Date() }, { onConflict: 'partner_code,category' });
+      await supabase.from('bond_scores').upsert({ 
+        partner_code: partnerCode, 
+        category, 
+        score: Math.min(10, Math.max(1, score)), 
+        updated_at: new Date() 
+      }, { onConflict: 'partner_code,category' });
     }
   }
 
@@ -206,12 +260,11 @@ class CloudService {
     for (const update of updates) await this.updateBondScore(partnerCode, update.category, update.delta);
   }
 
-  // --- Journal ---
-
   async getJournalEntries(partnerCode: string): Promise<JournalEntry[]> {
-    if (this.useLocalStorageOnly) return this.getLocal<JournalEntry>(`kindred_journal_${partnerCode}`);
+    const key = `kindred_journal_${partnerCode}`;
+    if (this.useLocalStorageOnly) return this.getLocal<JournalEntry>(key);
     const { data } = await supabase.from('journal').select('*').eq('partner_code', partnerCode).order('created_at', { ascending: false });
-    if (!data) return this.getLocal<JournalEntry>(`kindred_journal_${partnerCode}`);
+    if (!data) return this.getLocal<JournalEntry>(key);
     return data.map(d => ({ id: d.id, authorId: d.author_id, author: d.author_name, authorImage: '', date: new Date(d.created_at).toLocaleDateString(), timestamp: new Date(d.created_at).getTime(), text: d.text, theme_tags: d.theme_tags, image: d.image_url }));
   }
 
@@ -223,16 +276,15 @@ class CloudService {
     }
   }
 
-  // --- Activities (Co-Presence Sync) ---
-
   async setActiveActivity(partnerCode: string, activity: Activity | null): Promise<void> {
+    const key = `kindred_active_${partnerCode}`;
     if (activity) {
-      localStorage.setItem(`kindred_active_${partnerCode}`, JSON.stringify(activity));
+      localStorage.setItem(key, JSON.stringify(activity));
       if (!this.useLocalStorageOnly) {
         await supabase.from('active_sessions').upsert({ partner_code: partnerCode, activity, updated_at: new Date() });
       }
     } else {
-      localStorage.removeItem(`kindred_active_${partnerCode}`);
+      localStorage.removeItem(key);
       if (!this.useLocalStorageOnly) {
         await supabase.from('active_sessions').delete().eq('partner_code', partnerCode);
       }
@@ -240,28 +292,14 @@ class CloudService {
   }
 
   async getActiveActivity(partnerCode: string): Promise<Activity | null> {
+    const key = `kindred_active_${partnerCode}`;
     if (this.useLocalStorageOnly) {
-        const saved = localStorage.getItem(`kindred_active_${partnerCode}`);
+        const saved = localStorage.getItem(key);
         return saved ? JSON.parse(saved) : null;
     }
     const { data } = await supabase.from('active_sessions').select('activity').eq('partner_code', partnerCode).maybeSingle();
     return data?.activity || null;
   }
-
-  // --- Realtime ---
-
-  subscribeToPartnerSpace(partnerCode: string, onUpdate: () => void) {
-    if (this.useLocalStorageOnly) return () => {};
-    const channel = supabase.channel(`sync:${partnerCode}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bond_scores', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_paths', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }
-
-  // --- Misc ---
 
   async markLessonComplete(lessonId: string): Promise<void> {
     const completed = JSON.parse(localStorage.getItem('kindred_completed_lessons') || '[]');
@@ -276,23 +314,17 @@ class CloudService {
   }
 
   async saveChatMessage(partnerCode: string, message: ChatMessage): Promise<void> {
-    const updated = [...this.getLocal<ChatMessage>(`kindred_chat_${partnerCode}`), message].slice(-50);
-    this.saveLocal(`kindred_chat_${partnerCode}`, updated);
+    const key = `kindred_chat_${partnerCode}`;
+    const updated = [...this.getLocal<ChatMessage>(key), message].slice(-50);
+    this.saveLocal(key, updated);
   }
 
   async getChatHistory(partnerCode: string): Promise<ChatMessage[]> {
     return this.getLocal<ChatMessage>(`kindred_chat_${partnerCode}`);
   }
 
-  // Fixed error in AICoach.tsx: added missing clearChatHistory method
   async clearChatHistory(partnerCode: string): Promise<void> {
     this.saveLocal(`kindred_chat_${partnerCode}`, []);
-  }
-
-  async getPartnerPromptAnswer(partnerCode: string, myId: string): Promise<string | null> {
-    if (this.useLocalStorageOnly) return null;
-    const { data } = await supabase.from('prompt_answers').select('answer').eq('partner_code', partnerCode).neq('user_id', myId).maybeSingle();
-    return data?.answer || null;
   }
 
   async submitPromptAnswer(partnerCode: string, userId: string, answer: string) {
@@ -301,9 +333,15 @@ class CloudService {
     }
   }
 
+  async getPartnerPromptAnswer(partnerCode: string, myId: string): Promise<string | null> {
+    if (this.useLocalStorageOnly) return null;
+    const { data } = await supabase.from('prompt_answers').select('answer').eq('partner_code', partnerCode).neq('user_id', myId).maybeSingle();
+    return data?.answer || null;
+  }
+
   async getGoals(partnerCode: string): Promise<Goal[]> {
     const { data } = await supabase.from('goals').select('*').eq('partner_code', partnerCode);
-    return (data || []).map(d => ({ id: d.id, title: d.title, type: 'Couple', progress: d.progress, lastUpdated: new Date(d.updated_at).getTime(), microSteps: d.micro_steps, encouragement: d.encouragement }));
+    return (data || []).map(d => ({ id: d.id, title: d.title, type: 'Couple', progress: d.progress, lastUpdated: new Date(d.updated_at).getTime(), micro_steps: d.micro_steps, encouragement: d.encouragement }));
   }
 
   async saveGoal(partnerCode: string, goal: Goal) {
@@ -318,12 +356,6 @@ class CloudService {
   async saveWeeklySynthesis(partnerCode: string, synthesis: WeeklySynthesis) {
     const key = `kindred_weekly_${partnerCode}`;
     this.saveLocal(key, [synthesis, ...this.getLocal<WeeklySynthesis>(key)]);
-  }
-
-  async markWeeklySynthesisRead(partnerCode: string, id: string, userId: string) {
-    const key = `kindred_weekly_${partnerCode}`;
-    const list = this.getLocal<WeeklySynthesis>(key).map(s => s.id === id ? { ...s, readBy: [...new Set([...s.readBy, userId])] } : s);
-    this.saveLocal(key, list);
   }
 
   async getQuizAnswers(partnerCode: string, topic: string) {
@@ -362,10 +394,6 @@ class CloudService {
     return data?.partner_code === myId;
   }
 
-  async updateLastActive(userId: string) {
-    await supabase.from('profiles').update({ last_active: new Date().toISOString() }).eq('id', userId);
-  }
-
   async sendPulse(partnerCode: string, from: string) {
     const channel = supabase.channel(`pulses:${partnerCode}`);
     await channel.subscribe(async (s) => {
@@ -379,6 +407,17 @@ class CloudService {
   subscribeToPulses(partnerCode: string, onPulse: (p: any) => void) {
     const channel = supabase.channel(`pulses:${partnerCode}`).on('broadcast', { event: 'pulse' }, ({ payload }) => onPulse(payload)).subscribe();
     return () => channel.unsubscribe();
+  }
+
+  subscribeToPartnerSpace(partnerCode: string, onUpdate: () => void) {
+    if (this.useLocalStorageOnly) return () => {};
+    const channel = supabase.channel(`sync:${partnerCode}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'journal', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bond_scores', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_paths', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }
 }
 

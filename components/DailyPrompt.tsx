@@ -39,22 +39,22 @@ const DailyPrompt: React.FC = () => {
   
   return (
     <div className="py-12 animate-fade-in">
-      <div className="flex items-center text-white/30 mb-10 justify-between px-2">
+      <div className="flex items-center opacity-30 mb-10 justify-between px-2">
         <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] heading-font">Daily Reflection</h2>
       </div>
 
       {isLoading ? (
         <div className="animate-pulse space-y-4 px-2">
-            <div className="h-4 bg-white/5 rounded-full w-full"></div>
-            <div className="h-4 bg-white/5 rounded-full w-4/5"></div>
+            <div className="h-4 bg-current opacity-5 rounded-full w-full"></div>
+            <div className="h-4 bg-current opacity-5 rounded-full w-4/5"></div>
         </div>
       ) : (
-        <p className="text-[#FDFCF0] font-medium text-3xl leading-snug mb-12 italic text-center px-4">"{prompt}"</p>
+        <p className="text-current font-medium text-3xl leading-snug mb-12 italic text-center px-4">"{prompt}"</p>
       )}
 
       {myAnswerSubmitted ? (
         <div className="text-center py-20 px-2">
-          <p className="text-white/40 text-sm italic tracking-wide">Shared with {userData?.partnerName || 'Partner'}.</p>
+          <p className="opacity-40 text-sm italic tracking-wide">Shared with {userData?.partnerName || 'Partner'}.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="px-2">
@@ -62,12 +62,12 @@ const DailyPrompt: React.FC = () => {
             value={myAnswer}
             onChange={(e) => setMyAnswer(e.target.value)}
             placeholder="Type your heart here..."
-            className="w-full h-40 bg-white/2 border-b border-white/5 focus:border-[#A8FFB5] focus:outline-none transition-all resize-none placeholder-white/20 text-2xl font-light italic leading-relaxed mb-6 p-4 rounded-t-2xl"
+            className="w-full h-40 bg-current opacity-5 border-b border-current focus:opacity-100 focus:outline-none transition-all resize-none placeholder-current placeholder-opacity-20 text-2xl font-light italic leading-relaxed mb-6 p-4 rounded-t-2xl"
             disabled={isLoading}
           />
           <button
             type="submit"
-            className="w-full border border-white/20 text-[#FDFCF0] font-bold py-5 rounded-full hover:bg-white hover:text-black transition-all disabled:opacity-10 text-xs tracking-[0.2em] uppercase heading-font bg-white/5"
+            className="w-full border border-current border-opacity-20 text-current font-bold py-5 rounded-full hover:bg-current hover:text-inherit transition-all disabled:opacity-10 text-xs tracking-[0.2em] uppercase heading-font bg-current bg-opacity-5"
             disabled={!myAnswer.trim() || isLoading}
           >
             Send Reflection

@@ -1,7 +1,8 @@
 {
-  "name": "KINDRED 3",
-  "description": "A collaborative space for couples to deepen their connection —powered by Kindred AI.",
+  "name": "Kindred",
+  "description": "An AI-powered space for couples to deepen their connection —powered by Kindred AI.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

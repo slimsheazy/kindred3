@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Kindred</title>
     <meta name="description" content="An AI-powered space for couples to deepen their connection." />
-    <meta name="theme-color" content="#FDFCF0" />
+    <meta name="theme-color" content="#121212" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -17,21 +16,19 @@
     <link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       :root { 
-        --midnight: #FDFCF0; 
-        --pillow-charcoal: #F5F4E8;
-        --cream: #121212; 
-        --muted-green: #3D8C50;
-        --muted-pink: #D44D85;
+        --bg-primary: #121212; 
+        --text-primary: #FDFCF0; 
+        --accent-green: #A8FFB5;
+        --accent-pink: #FF85B3;
         --mouse-x: 50%;
         --mouse-y: 50%;
       }
 
-      body.midnight-mode {
-        --midnight: #121212;
-        --pillow-charcoal: #1A1A1A;
-        --cream: #FDFCF0;
-        --muted-green: #A8FFB5;
-        --muted-pink: #FF85B3;
+      body.light-mode {
+        --bg-primary: #FDFCF0;
+        --text-primary: #121212;
+        --accent-green: #3D8C50;
+        --accent-pink: #D44D85;
       }
 
       html { 
@@ -40,15 +37,15 @@
       }
       body { 
         font-family: 'Cardo', serif; 
-        background-color: var(--midnight); 
-        color: var(--cream); 
+        background-color: var(--bg-primary); 
+        color: var(--text-primary); 
         margin: 0; 
         overflow-x: hidden; 
         -webkit-tap-highlight-color: transparent; 
         line-height: 1.6;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        transition: background-color 0.8s ease, color 0.8s ease;
+        transition: background-color 0.8s cubic-bezier(0.4, 0, 0.2, 1), color 0.8s cubic-bezier(0.4, 0, 0.2, 1);
       }
       h1, h2, h3, h4, .heading-font { 
         font-family: 'Montserrat', sans-serif; 
@@ -62,10 +59,9 @@
       .text-clamp-7xl { font-size: clamp(4rem, 14vw, 7rem); line-height: 1; }
 
       .orb { position: fixed; width: 80vw; height: 80vw; border-radius: 50%; filter: blur(120px); opacity: 0.12; z-index: -1; pointer-events: none; will-change: transform; }
-      .orb-pink { background: var(--muted-pink); top: -20%; right: -20%; animation: float-pink 25s infinite alternate ease-in-out; }
-      .orb-green { background: var(--muted-green); bottom: -20%; left: -20%; animation: float-green 30s infinite alternate ease-in-out; }
+      .orb-pink { background: var(--accent-pink); top: -20%; right: -20%; animation: float-pink 25s infinite alternate ease-in-out; }
+      .orb-green { background: var(--accent-green); bottom: -20%; left: -20%; animation: float-green 30s infinite alternate ease-in-out; }
       
-      /* Interactive Layers */
       .sensory-layer {
         position: fixed;
         inset: 0;
@@ -75,8 +71,7 @@
         mix-blend-mode: soft-light;
       }
 
-      /* Light Sheen */
-      body:not(.midnight-mode) .sensory-layer {
+      body.light-mode .sensory-layer {
         background: radial-gradient(
           circle at var(--mouse-x) var(--mouse-y),
           rgba(255, 255, 255, 0.8) 0%,
@@ -84,13 +79,12 @@
         );
       }
 
-      /* Midnight Spotlight */
-      body.midnight-mode .sensory-layer {
+      body:not(.light-mode) .sensory-layer {
         opacity: 0.4;
         mix-blend-mode: overlay;
         background: radial-gradient(
           circle at var(--mouse-x) var(--mouse-y),
-          var(--muted-green) 0%,
+          var(--accent-green) 0%,
           transparent 35%
         );
       }
@@ -100,18 +94,22 @@
       
       .no-scrollbar::-webkit-scrollbar { display: none; }
       .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      
       @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
       @keyframes fade-in-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
       .animate-fade-in { animation: fade-in 0.6s ease-out forwards; }
       .animate-fade-in-up { animation: fade-in-up 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
 
-      input::placeholder, textarea::placeholder { color: rgba(18, 18, 18, 0.25); }
-      body.midnight-mode input::placeholder, body.midnight-mode textarea::placeholder { color: rgba(253, 252, 240, 0.25); }
+      input, textarea { 
+        color: var(--text-primary) !important;
+        background: transparent;
+      }
+      input::placeholder, textarea::placeholder { 
+        color: var(--text-primary) !important; 
+        opacity: 0.3 !important;
+      }
 
-      .glass-card { background: rgba(18, 18, 18, 0.03); border: 1px solid rgba(18, 18, 18, 0.05); backdrop-filter: blur(10px); }
-      body.midnight-mode .glass-card { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
-      
-      .micro-copy { font-size: 0.75rem; letter-spacing: 0.05em; font-weight: 500; }
+      .glass-card { background: rgba(var(--text-primary), 0.03); border: 1px solid rgba(var(--text-primary), 0.05); backdrop-filter: blur(10px); }
     </style>
 <script type="importmap">
 {

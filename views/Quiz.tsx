@@ -211,27 +211,27 @@ const Quiz: React.FC = () => {
     return (
       <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in">
         <header className="mb-16">
-          <h1 className="text-clamp-6xl font-light mb-2 text-[#FDFCF0]">Quiz.</h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#FDFCF0]/40 heading-font">Discover each other again</p>
+          <h1 className="text-clamp-6xl font-light mb-2">Quiz.</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 heading-font">Discover each other again</p>
         </header>
-        <p className="text-xl text-[#FDFCF0]/70 mb-12 italic font-light leading-relaxed">Select a theme for your journey into each other's worlds.</p>
+        <p className="text-xl opacity-70 mb-12 italic font-light leading-relaxed">Select a theme for your journey into each other's worlds.</p>
         <div className="space-y-4">
           {topics.map(t => (
             <button
               key={t}
               disabled={isLoading}
               onClick={() => startQuiz(t)}
-              className="w-full text-left py-10 border-b border-white/5 hover:opacity-70 transition-all flex justify-between items-center group disabled:opacity-50"
+              className="w-full text-left py-10 border-b border-current border-opacity-5 hover:opacity-70 transition-all flex justify-between items-center group disabled:opacity-50"
             >
               <div>
-                <span className="text-clamp-4xl font-light text-[#FDFCF0]">{t}</span>
+                <span className="text-clamp-4xl font-light">{t}</span>
                 {topicStatuses[t] === 'completed' && (
                     <div className="mt-1 flex items-center gap-1">
-                        <span className="text-[8px] font-bold text-[#A8FFB5] uppercase tracking-widest">Achieved Equilibrium</span>
+                        <span className="text-[8px] font-bold text-[#3D8C50] dark:text-[#A8FFB5] uppercase tracking-widest">Achieved Equilibrium</span>
                     </div>
                 )}
               </div>
-              <span className={`text-[9px] font-bold uppercase heading-font transition-all ${topicStatuses[t] === 'ready' ? 'text-[#A8FFB5] animate-pulse' : 'text-white/20'}`}>
+              <span className={`text-[9px] font-bold uppercase heading-font transition-all ${topicStatuses[t] === 'ready' ? 'text-[#3D8C50] dark:text-[#A8FFB5] animate-pulse' : 'opacity-20'}`}>
                 {isLoading && topic === t ? 'Designing...' : getStatusLabel(t)}
               </span>
             </button>
@@ -245,10 +245,10 @@ const Quiz: React.FC = () => {
     const q = questions[currentQuestionIndex];
     if (!q) return null;
     return (
-      <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in text-[#FDFCF0]">
-        <button onClick={() => setCurrentStep('topic')} className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-12 heading-font">← Exit</button>
+      <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in">
+        <button onClick={() => setCurrentStep('topic')} className="opacity-30 text-[10px] font-bold uppercase tracking-widest mb-12 heading-font">← Exit</button>
         <div className="mb-12">
-            <span className="text-[8px] font-bold uppercase tracking-widest text-white/20 block mb-2 heading-font">Step {currentQuestionIndex + 1} of {questions.length}</span>
+            <span className="text-[8px] font-bold uppercase tracking-widest opacity-20 block mb-2 heading-font">Step {currentQuestionIndex + 1} of {questions.length}</span>
             <h2 className="text-clamp-4xl font-light leading-tight">{q.question}</h2>
         </div>
         <div className="space-y-4">
@@ -257,7 +257,7 @@ const Quiz: React.FC = () => {
               <button
                 key={opt}
                 onClick={() => handleAnswer(q.id, opt)}
-                className="w-full text-left p-6 border border-white/10 rounded-full hover:bg-white hover:text-[#121212] transition-all text-xl font-light italic"
+                className="w-full text-left p-6 border border-current border-opacity-10 rounded-full hover:bg-current hover:text-inherit transition-all text-xl font-light italic"
               >
                 {opt}
               </button>
@@ -266,7 +266,7 @@ const Quiz: React.FC = () => {
             <div className="space-y-6">
               <textarea
                 autoFocus
-                className="w-full bg-transparent border-b border-white/10 focus:border-[#A8FFB5] outline-none text-2xl font-light italic p-4 resize-none h-40 placeholder-white/20"
+                className="w-full bg-transparent border-b border-current border-opacity-10 focus:border-inherit outline-none text-2xl font-light italic p-4 resize-none h-40 placeholder-current placeholder-opacity-20"
                 placeholder="Write from the heart..."
               />
               <button 
@@ -274,7 +274,7 @@ const Quiz: React.FC = () => {
                   const val = (e.currentTarget.previousElementSibling as HTMLTextAreaElement).value;
                   handleAnswer(q.id, val);
                 }}
-                className="w-full py-5 bg-[#FDFCF0] text-[#121212] font-bold rounded-full uppercase text-xs tracking-widest heading-font"
+                className="w-full py-5 bg-current text-inherit font-bold rounded-full uppercase text-xs tracking-widest heading-font"
               >
                 Submit Answer
               </button>
@@ -288,10 +288,10 @@ const Quiz: React.FC = () => {
   if (currentStep === 'waiting') {
     return (
       <div className="px-6 py-12 max-w-xl mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in">
-        <h2 className="text-clamp-5xl font-light mb-6 text-[#FDFCF0]">Waiting.</h2>
-        <p className="text-xl text-[#FDFCF0]/70 italic mb-12">Your reflections are archived. We're waiting for {userData?.partnerName || 'your partner'} to complete their cycle.</p>
-        <div className="w-16 h-16 border-2 border-white/5 border-t-[#A8FFB5] rounded-full animate-spin mb-12" />
-        <button onClick={() => setCurrentStep('topic')} className="w-64 py-5 border border-white/20 text-white font-bold rounded-full uppercase text-[10px] tracking-widest heading-font">Return to Space</button>
+        <h2 className="text-clamp-5xl font-light mb-6">Waiting.</h2>
+        <p className="text-xl opacity-70 italic mb-12">Your reflections are archived. We're waiting for {userData?.partnerName || 'your partner'} to complete their cycle.</p>
+        <div className="w-16 h-16 border-2 border-current border-opacity-5 border-t-inherit rounded-full animate-spin mb-12" />
+        <button onClick={() => setCurrentStep('topic')} className="w-64 py-5 border border-current border-opacity-20 font-bold rounded-full uppercase text-[10px] tracking-widest heading-font">Return to Space</button>
       </div>
     );
   }
@@ -300,13 +300,13 @@ const Quiz: React.FC = () => {
     return (
       <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in">
         <header className="mb-16">
-          <h1 className="text-clamp-6xl font-light mb-2 text-[#FDFCF0]">Synthesis.</h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#FDFCF0]/40 heading-font">The Alchemy of Connection</p>
+          <h1 className="text-clamp-6xl font-light mb-2">Synthesis.</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 heading-font">The Alchemy of Connection</p>
         </header>
-        <div className="lesson-content mb-16 prose prose-invert prose-xl prose-stone">
+        <div className="lesson-content mb-16 prose dark:prose-invert prose-xl prose-stone">
           <Markdown>{interpretation}</Markdown>
         </div>
-        <button onClick={() => setCurrentStep('topic')} className="w-full py-5 bg-[#FDFCF0] text-[#121212] font-bold rounded-full uppercase text-xs tracking-widest heading-font">Return Home</button>
+        <button onClick={() => setCurrentStep('topic')} className="w-full py-5 bg-current text-inherit font-bold rounded-full uppercase text-xs tracking-widest heading-font">Return Home</button>
       </div>
     );
   }

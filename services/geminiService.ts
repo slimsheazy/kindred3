@@ -5,12 +5,19 @@ import { UserData, Activity, CourseModule, Lesson, QuizQuestion, MicroStep, Jour
 let currentUserData: UserData | null = null;
 
 const getSystemPrompt = (context?: { journalEntries: JournalEntry[], bondScores: BondScore[], foundationSummary?: string }) => {
-  const basePrompt = "You are a world-class, empathetic AI relationship coach from 'Kindred'. You use evidence-based frameworks like the Gottman Method and EFT. Your goal is to provide supportive, insightful, and practical advice. You have access to the couple's long-term history via a 'Foundation Summary' and their recent memories. Use markdown.";
+  const basePrompt = "You are Kindred, a world-class, empathetic AI relationship coach. You use evidence-based frameworks like the Gottman Method and EFT. Use markdown.";
   
   let dynamicPrompt = basePrompt;
   if (currentUserData) {
     const focusString = (currentUserData.focusAreas || []).join(', ');
-    dynamicPrompt = `${basePrompt} You are coaching ${currentUserData.userName} and ${userDataPartnerName(currentUserData)}. Focus areas: ${focusString}.`;
+    // CRITICAL FIX: Explicitly command the AI to address the current user INDIVIDUALLY.
+    // We strictly define that the conversation is between Kindred and the LOGGED-IN user.
+    dynamicPrompt = `${basePrompt} 
+    IMPORTANT: You are speaking EXCLUSIVELY to ${currentUserData.userName}. 
+    Do NOT address them collectively as "${currentUserData.userName} and ${currentUserData.partnerName}". 
+    Always address ${currentUserData.userName} individually (e.g., "Hello ${currentUserData.userName}", "What are your thoughts...").
+    Their partner's name is ${currentUserData.partnerName} for reference, but the focus of this dialogue is ${currentUserData.userName}'s perspective.
+    Relationship focus areas: ${focusString}.`;
   }
 
   if (context) {
@@ -23,15 +30,15 @@ const getSystemPrompt = (context?: { journalEntries: JournalEntry[], bondScores:
     RECENT MEMORIES:
     ${entriesText || 'No recent entries yet.'}
 
-    CURRENT BOND MAP EQUILIBRIUM (1-10 scale): ${scoresText}
+    CURRENT EQUILIBRIUM (1-10 scale): ${scoresText}
     
-    CRITICAL INSTRUCTION: Dynamically reference the Foundation Summary for deep continuity and the recent scores/memories for current relevance. Be the observant architect of their growth.`;
+    CRITICAL INSTRUCTION: Reference context but keep the tone personal to ${currentUserData?.userName}.`;
   }
   
   return dynamicPrompt;
 };
 
-const userDataPartnerName = (u: UserData) => u?.partnerName || 'Partner';
+const userDataPartnerName = (u: UserData | null) => u?.partnerName || 'Partner';
 
 export const initializeGeminiContext = (userData: UserData) => {
   currentUserData = userData;
@@ -89,7 +96,7 @@ export const generateWeeklySynthesis = async (entries: JournalEntry[], activitie
         const ai = getAiClient();
         const journalText = entries.map(e => `- ${e.author}: ${e.text}`).join('\n');
         const activityText = activities.map(a => `- ${a.title} (${a.category})`).join('\n');
-        const prompt = `Analyze history for ${currentUserData?.userName} and ${userDataPartnerName(currentUserData!)}.
+        const prompt = `Analyze history for ${currentUserData?.userName} and ${userDataPartnerName(currentUserData)}.
         JOURNALS: ${journalText} | ACTIONS: ${activityText}
         1. Write a 3-stanza poem. 2. Provide one deep insight. Return JSON: {"poem": "...", "insight": "..."}`;
         const response = await ai.models.generateContent({

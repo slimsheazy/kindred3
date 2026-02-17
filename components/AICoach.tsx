@@ -74,7 +74,6 @@ const AICoach: React.FC = () => {
       if (updates.length > 0) {
           await cloudService.batchUpdateScores(partnerCode, updates);
           
-          // Create Growth Logs for attribution
           for (const update of updates) {
               const log: GrowthLog = {
                   id: `growth-${Date.now()}-${Math.random()}`,
@@ -106,9 +105,9 @@ const AICoach: React.FC = () => {
   };
 
   return (
-    <div className="py-20 border-t border-white/5">
+    <div className="py-20 border-t border-current border-opacity-5">
         <div className="flex justify-between items-center mb-12">
-            <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30 heading-font">AI Oracle</h2>
+            <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-30 heading-font">Kindred Oracle</h2>
             <button 
                 onClick={() => {
                   if(confirm("Clear history?")) {
@@ -116,7 +115,7 @@ const AICoach: React.FC = () => {
                     setMessages([{ role: 'model', text: 'History cleared.', timestamp: Date.now() }]);
                   }
                 }}
-                className="text-[8px] font-bold uppercase tracking-widest text-white/20 hover:text-white transition-all"
+                className="text-[8px] font-bold uppercase tracking-widest opacity-20 hover:opacity-100 transition-all"
             >
               Reset Memory
             </button>
@@ -129,14 +128,14 @@ const AICoach: React.FC = () => {
                     <React.Fragment key={i}>
                         {showTime && (
                             <div className="flex justify-center my-6">
-                                <span className="text-[7px] font-bold uppercase tracking-[0.3em] text-white/20 bg-white/5 px-3 py-1 rounded-full">{formatTimestamp(msg.timestamp)}</span>
+                                <span className="text-[7px] font-bold uppercase tracking-[0.3em] opacity-20 bg-current bg-opacity-5 px-3 py-1 rounded-full">{formatTimestamp(msg.timestamp)}</span>
                             </div>
                         )}
                         <div className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} animate-fade-in`}>
-                          <span className="text-[8px] font-bold uppercase tracking-widest text-white/30 mb-2 heading-font">
+                          <span className="text-[8px] font-bold uppercase tracking-widest opacity-30 mb-2 heading-font">
                             {msg.role === 'model' ? 'Oracle' : 'You'}
                           </span>
-                          <div className={`text-xl leading-relaxed prose prose-invert prose-stone ${msg.role === 'user' ? 'text-right italic text-[#FDFCF0]/90 bg-white/5 p-4 rounded-2xl' : 'text-left font-light text-[#FDFCF0] p-4'}`}>
+                          <div className={`text-xl leading-relaxed prose dark:prose-invert prose-stone ${msg.role === 'user' ? 'text-right italic opacity-90 bg-current bg-opacity-5 p-4 rounded-2xl' : 'text-left font-light p-4'}`}>
                               <Markdown>{msg.text}</Markdown>
                           </div>
                         </div>
@@ -144,10 +143,10 @@ const AICoach: React.FC = () => {
                 );
             })}
             {isLoading && (
-                <div className="text-[8px] font-bold uppercase tracking-widest text-[#A8FFB5]/40 animate-pulse flex items-center gap-2">
-                    <span className="w-1 h-1 bg-[#A8FFB5]/40 rounded-full animate-bounce" />
-                    <span className="w-1 h-1 bg-[#A8FFB5]/40 rounded-full animate-bounce [animation-delay:0.2s]" />
-                    <span className="w-1 h-1 bg-[#A8FFB5]/40 rounded-full animate-bounce [animation-delay:0.4s]" />
+                <div className="text-[8px] font-bold uppercase tracking-widest opacity-40 animate-pulse flex items-center gap-2">
+                    <span className="w-1 h-1 bg-current opacity-40 rounded-full animate-bounce" />
+                    <span className="w-1 h-1 bg-current opacity-40 rounded-full animate-bounce [animation-delay:0.2s]" />
+                    <span className="w-1 h-1 bg-current opacity-40 rounded-full animate-bounce [animation-delay:0.4s]" />
                     Architecting wisdom...
                 </div>
             )}
@@ -160,12 +159,12 @@ const AICoach: React.FC = () => {
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
                 placeholder="Share a thought..."
-                className="w-full py-6 bg-transparent border-b border-white/10 focus:border-[#A8FFB5] outline-none text-2xl font-light italic transition-all placeholder-white/20 pr-24"
+                className="w-full py-6 bg-transparent border-b border-current border-opacity-10 focus:border-inherit outline-none text-2xl font-light italic transition-all placeholder-current placeholder-opacity-20 pr-24"
             />
             <button 
                 type="submit" 
                 disabled={!userInput.trim() || isLoading}
-                className="absolute right-0 bottom-6 text-[10px] font-bold uppercase tracking-widest text-[#A8FFB5]/60 hover:text-[#A8FFB5] transition-colors disabled:opacity-0 heading-font"
+                className="absolute right-0 bottom-6 text-[10px] font-bold uppercase tracking-widest opacity-60 hover:opacity-100 transition-colors disabled:opacity-0 heading-font"
             >
                 Speak
             </button>

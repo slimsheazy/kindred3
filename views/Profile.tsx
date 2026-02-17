@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { UserData } from '../types';
 import { initializeGeminiContext } from '../services/geminiService';
@@ -57,10 +56,9 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
     setTimeout(() => setActiveMessage(null), 3000);
   };
 
-  // Fix: Explicitly type newTheme to avoid string inference error when updating UserData
   const toggleTheme = () => {
     if (!userData) return;
-    const newTheme: 'light' | 'midnight' = userData.theme === 'midnight' ? 'light' : 'midnight';
+    const newTheme: 'light' | 'midnight' = userData.theme === 'light' ? 'midnight' : 'light';
     const updated: UserData = { ...userData, theme: newTheme };
     setUserData(updated);
     localStorage.setItem('kindred_user_data', JSON.stringify(updated));
@@ -144,9 +142,9 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
       </header>
       
       <div className="flex flex-col items-center mb-16">
-        <div className="w-40 h-40 rounded-full bg-gradient-to-tr from-[#D44D85]/10 to-[#3D8C50]/10 flex items-center justify-center border border-black/5 dark:border-white/5 shadow-sm mb-8 relative group">
+        <div className="w-40 h-40 rounded-full bg-gradient-to-tr from-[#FF85B3]/10 to-[#A8FFB5]/10 flex items-center justify-center border border-black/5 dark:border-white/5 shadow-sm mb-8 relative group">
             <span className="text-5xl font-light tracking-tighter">{getInitials()}</span>
-            <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-4 border-current ${isSupabaseConfigured ? 'bg-[#3D8C50] animate-pulse' : 'bg-black/10'}`} title={isSupabaseConfigured ? "Cloud Active" : "Local Only"} />
+            <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-4 border-current ${isSupabaseConfigured ? 'bg-[#A8FFB5] animate-pulse' : 'bg-black/10'}`} title={isSupabaseConfigured ? "Cloud Active" : "Local Only"} />
         </div>
         
         <h2 className="text-clamp-4xl font-light">
@@ -164,7 +162,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             <div className="flex gap-6">
               <button 
                   onClick={() => setIsLinking(true)}
-                  className="text-xs font-bold text-[#3D8C50] dark:text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current pb-2 heading-font"
+                  className="text-xs font-bold text-[#A8FFB5] dark:text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current pb-2 heading-font"
               >
                 Merge with Partner
               </button>
@@ -172,7 +170,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
                   onClick={toggleTheme}
                   className="text-xs font-bold opacity-40 uppercase tracking-[0.2em] border-b border-current pb-2 heading-font"
               >
-                {userData?.theme === 'midnight' ? 'Shift to Light' : 'Shift to Midnight'}
+                {userData?.theme === 'light' ? 'Shift to Midnight' : 'Shift to Light'}
               </button>
             </div>
         </div>
@@ -185,7 +183,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
                   <button 
                     key={v.label}
                     onClick={() => setVibe(v.label)}
-                    className={`flex flex-col items-center gap-3 p-6 rounded-[2rem] border transition-all ${userData?.vibe === v.label ? 'border-[#3D8C50] dark:border-[#A8FFB5] bg-current/10' : 'border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10'}`}
+                    className={`flex flex-col items-center gap-3 p-6 rounded-[2rem] border transition-all ${userData?.vibe === v.label ? 'border-[#A8FFB5] bg-current/10' : 'border-black/5 dark:border-white/5 hover:border-black/10 dark:hover:border-white/10'}`}
                   >
                       <span className="text-2xl">{v.emoji}</span>
                       <span className="text-[11px] font-bold uppercase tracking-widest opacity-60 text-center leading-tight">{v.label}</span>
@@ -211,7 +209,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            className="fixed top-8 left-1/2 -translate-x-1/2 bg-[#121212] dark:bg-[#FDFCF0] text-[#FDFCF0] dark:text-[#121212] px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest z-[200] shadow-2xl text-center heading-font"
+            className="fixed top-8 left-1/2 -translate-x-1/2 bg-[#FDFCF0] text-[#121212] px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest z-[200] shadow-2xl text-center heading-font"
           >
               {activeMessage}
           </motion.div>
@@ -221,12 +219,12 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
       <div className="space-y-8 pt-16 border-t border-black/10 dark:border-white/10">
           <button 
               onClick={handleLogout}
-              className="w-full border border-black/20 dark:border-white/20 font-bold py-7 rounded-full hover:bg-current hover:text-black dark:hover:text-[#121212] transition-all text-xs tracking-[0.2em] uppercase heading-font shadow-sm"
+              className="w-full border border-black/20 dark:border-white/20 font-bold py-7 rounded-full hover:bg-current hover:text-[var(--bg-primary)] transition-all text-xs tracking-[0.2em] uppercase heading-font shadow-sm"
           >
               Disconnect Local Session
           </button>
           <div className="flex justify-center items-center gap-3">
-            <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-[#3D8C50] animate-pulse' : 'bg-gray-600'}`} />
+            <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-[#A8FFB5] animate-pulse' : 'bg-gray-600'}`} />
             <span className="text-[11px] opacity-30 font-bold uppercase tracking-widest heading-font">
                 {isSupabaseConfigured ? `Engine Active — Heartbeat ${new Date(syncTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Local Engine Only'}
             </span>

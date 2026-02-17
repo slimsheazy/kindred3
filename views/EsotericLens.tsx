@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { interpretSynchronicity } from '../services/geminiService';
 import Markdown from 'react-markdown';
@@ -43,16 +42,16 @@ const EsotericLens: React.FC = () => {
   return (
     <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in text-current">
       <header className="mb-16">
-        <h1 className="text-clamp-6xl font-light mb-2">Lens.</h1>
-        <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-40 heading-font">Kindred Oracle Vision</p>
+        <h1 className="text-clamp-6xl font-light mb-2 text-[var(--text-primary)]">Lens.</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-40 heading-font text-[var(--text-primary)]">Kindred Oracle Vision</p>
       </header>
 
       {!image ? (
         <div className="flex flex-col items-center justify-center py-20 border-2 border-dashed border-current/10 rounded-[3rem] space-y-8">
-          <p className="text-xl italic font-light opacity-60 text-center px-10">Capture a fragment of your shared world to find its hidden resonance.</p>
+          <p className="text-xl italic font-light opacity-60 text-center px-10 text-[var(--text-primary)]">Capture a fragment of your shared world to find its hidden resonance.</p>
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="px-12 py-5 bg-current text-current-inverted rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-xl active:scale-95 transition-all"
+            className="px-12 py-5 bg-current text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-xl active:scale-95 transition-all heading-font"
           >
             Capture Light
           </button>
@@ -63,7 +62,7 @@ const EsotericLens: React.FC = () => {
           <div className="relative group overflow-hidden rounded-[3rem] border border-current/10 shadow-2xl">
             <img src={image} alt="Captured light" className="w-full h-auto object-cover grayscale-[0.5] group-hover:grayscale-0 transition-all duration-1000" />
             {isLoading && (
-              <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex flex-col items-center justify-center">
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-md flex flex-col items-center justify-center z-20">
                 <div className="w-12 h-12 border-2 border-white/20 border-t-white rounded-full animate-spin mb-4" />
                 <span className="text-xs font-bold uppercase tracking-widest text-white animate-pulse">Consulting the Oracle</span>
               </div>
@@ -73,7 +72,7 @@ const EsotericLens: React.FC = () => {
           {!interpretation && !isLoading && (
             <button 
               onClick={handleInterpret}
-              className="w-full py-6 border border-current/20 rounded-full font-bold uppercase text-xs tracking-[0.4em] hover:bg-current hover:text-current-inverted transition-all"
+              className="w-full py-6 border border-current/20 rounded-full font-bold uppercase text-xs tracking-[0.4em] hover:bg-current hover:text-[var(--bg-primary)] transition-all heading-font"
             >
               Seek Interpretation
             </button>
@@ -81,13 +80,13 @@ const EsotericLens: React.FC = () => {
 
           {interpretation && (
             <div className="p-10 bg-current/2 border border-current/5 rounded-[3rem] animate-fade-in-up">
-              <span className="text-xs font-bold uppercase tracking-widest opacity-30 mb-6 block heading-font">Oracle Synthesis</span>
-              <div className="prose prose-stone dark:prose-invert prose-xl italic font-light leading-relaxed">
+              <span className="text-xs font-bold uppercase tracking-widest opacity-30 mb-6 block heading-font text-[var(--text-primary)]">Oracle Synthesis</span>
+              <div className="prose prose-stone dark:prose-invert prose-xl italic font-light leading-relaxed text-[var(--text-primary)]">
                 <Markdown>{interpretation}</Markdown>
               </div>
               <button 
                 onClick={reset}
-                className="mt-12 text-xs font-bold uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity border-b border-current pb-1"
+                className="mt-12 text-xs font-bold uppercase tracking-widest opacity-30 hover:opacity-100 transition-opacity border-b border-current pb-1 text-[var(--text-primary)]"
               >
                 Clear Vision
               </button>
@@ -95,7 +94,6 @@ const EsotericLens: React.FC = () => {
           )}
         </div>
       )}
-      <style>{`.text-current-inverted { color: var(--midnight); }`}</style>
     </div>
   );
 };

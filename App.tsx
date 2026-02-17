@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { View, UserData } from './types';
 import BottomNav from './components/BottomNav';
@@ -95,10 +94,11 @@ const App: React.FC = () => {
 
   // Apply Theme Class
   useEffect(() => {
-    if (userData?.theme === 'midnight') {
-      document.body.classList.add('midnight-mode');
+    // If user explicitly chooses 'light', we apply the class. Default is Midnight.
+    if (userData?.theme === 'light') {
+      document.body.classList.add('light-mode');
     } else {
-      document.body.classList.remove('midnight-mode');
+      document.body.classList.remove('light-mode');
     }
   }, [userData?.theme]);
 
@@ -145,8 +145,8 @@ const App: React.FC = () => {
   }, [currentView, userData, handleReset, refreshTrigger]);
 
   if (hasOnboarded === null) return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FDFCF0]">
-      <div className="w-8 h-8 border-2 border-black/10 border-t-[#3D8C50] rounded-full animate-spin" />
+    <div className="min-h-screen flex items-center justify-center bg-[#121212]">
+      <div className="w-8 h-8 border-2 border-white/10 border-t-[#A8FFB5] rounded-full animate-spin" />
     </div>
   );
 
