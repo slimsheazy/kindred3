@@ -57,6 +57,14 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
   const ambientMusicRef = useRef<{ nodes: any[], ctx: AudioContext | null }>({ nodes: [], ctx: null });
   const fullTranscriptRef = useRef<string>('');
   const micStreamRef = useRef<MediaStream | null>(null);
+  
+  // Ref to hold the current connection status for high-frequency callbacks
+  const statusRef = useRef<ConnectionStatus>('idle');
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    statusRef.current = connectionStatus;
+  }, [connectionStatus]);
 
   const setMediationState: FunctionDeclaration = {
     name: 'setMediationState',
@@ -188,7 +196,9 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
     if (!process.env.API_KEY || connectionStatus === 'initializing' || connectionStatus === 'reconnecting') return;
     
     sensoryService.tap();
-    setConnectionStatus(isRetry ? 'reconnecting' : 'initializing');
+    const newStatus = isRetry ? 'reconnecting' : 'initializing';
+    setConnectionStatus(newStatus);
+    statusRef.current = newStatus;
     setIsPreflight(false);
 
     if (isRetry) await cleanupSession();
@@ -209,11 +219,14 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
         callbacks: {
           onopen: () => {
             setConnectionStatus('active');
+            statusRef.current = 'active';
             setReconnectAttempt(0);
             const source = inputCtx.createMediaStreamSource(stream);
             const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
-              if (connectionStatus !== 'active' && connectionStatus !== 'reconnecting') return;
+              // Use statusRef to avoid stale closure narrowing issues (TS2367)
+              if (statusRef.current !== 'active' && statusRef.current !== 'reconnecting') return;
+              
               const inputData = e.inputBuffer.getChannelData(0);
               let sum = 0;
               for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
@@ -289,10 +302,14 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
           onerror: (e) => {
             console.error("Session error:", e);
             setConnectionStatus('interrupted');
+            statusRef.current = 'interrupted';
           },
           onclose: () => {
             console.warn("Session closed unexpectedly");
-            if (connectionStatus === 'active') setConnectionStatus('interrupted');
+            if (statusRef.current === 'active') {
+              setConnectionStatus('interrupted');
+              statusRef.current = 'interrupted';
+            }
           }
         },
         config: {
@@ -308,6 +325,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
     } catch (err) {
       console.error("Mediation initiation failed", err);
       setConnectionStatus('failed');
+      statusRef.current = 'failed';
     }
   };
 
