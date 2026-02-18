@@ -20,7 +20,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     partnerCode: '', syncStatus: 'offline', theme: 'midnight'
   });
   
-  // Assessment categories with 2 sub-questions each for better resolution
   const [assessment, setAssessment] = useState<Record<string, number>>({
     'c1': 5, 'c2': 5, // Communication
     'i1': 5, 'i2': 5, // Intimacy

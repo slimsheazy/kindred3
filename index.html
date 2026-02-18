@@ -23,7 +23,7 @@
         --text-primary-rgb: 253, 252, 240;
         --accent-green: #A8FFB5;
         --accent-pink: #FF85B3;
-        --orb-color: #00F2FF; /* Vibrant Kindred Cyan */
+        --orb-color: #00F2FF; 
         --mouse-x: 50%;
         --mouse-y: 50%;
       }
@@ -76,53 +76,51 @@
         border-width: 0;
       }
 
-      .orb { position: fixed; width: 60vw; height: 60vw; border-radius: 50%; filter: blur(100px); opacity: 0.05; z-index: -1; pointer-events: none; will-change: transform; }
+      /* Secondary Orbs for Depth */
+      .orb { position: fixed; width: 60vw; height: 60vw; border-radius: 50%; filter: blur(100px); opacity: 0.03; z-index: -2; pointer-events: none; will-change: transform; }
       .orb-pink { background: var(--accent-pink); top: -10%; right: -10%; animation: float-pink 25s infinite alternate ease-in-out; }
       .orb-green { background: var(--accent-green); bottom: -10%; left: -10%; animation: float-green 30s infinite alternate ease-in-out; }
       
-      /* Primary Dynamic Orb */
+      /* Primary Dynamic Light Source */
       .following-orb {
         position: fixed;
-        width: 65vmax;
-        height: 65vmax;
+        width: 120vmax;
+        height: 120vmax;
         top: 0;
         left: 0;
         transform: translate(calc(var(--mouse-x) - 50%), calc(var(--mouse-y) - 50%));
-        background: radial-gradient(circle at center, var(--orb-color) 0%, transparent 70%);
-        filter: blur(50px);
-        opacity: 0.45; /* Much stronger */
+        background: radial-gradient(circle at center, 
+          var(--orb-color) 0%, 
+          rgba(0, 242, 255, 0.5) 10%, 
+          rgba(0, 242, 255, 0.1) 30%, 
+          transparent 60%);
+        filter: blur(60px);
+        opacity: 0.7;
         pointer-events: none;
         z-index: -1;
         will-change: transform;
-        transition: transform 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+        transition: transform 0.2s cubic-bezier(0.1, 0.3, 0.2, 1);
         mix-blend-mode: screen;
       }
 
-      /* Secondary Trail Orb */
-      .following-orb-trail {
+      /* Dark Flashlight Shroud */
+      .flashlight-overlay {
         position: fixed;
-        width: 40vmax;
-        height: 40vmax;
-        top: 0;
-        left: 0;
-        transform: translate(calc(var(--mouse-x) - 50%), calc(var(--mouse-y) - 50%));
-        background: radial-gradient(circle at center, var(--accent-pink) 0%, transparent 60%);
-        filter: blur(80px);
-        opacity: 0.15;
+        inset: 0;
         pointer-events: none;
-        z-index: -2;
-        will-change: transform;
-        transition: transform 0.4s cubic-bezier(0.2, 0, 0.2, 1); /* Slower lag */
-        mix-blend-mode: screen;
+        z-index: 1; /* Above background orbs, below content if needed, or above everything for mystery */
+        background: radial-gradient(
+          circle at var(--mouse-x) var(--mouse-y), 
+          transparent 10%, 
+          rgba(var(--bg-primary-rgb), 0.4) 25%, 
+          rgba(var(--bg-primary-rgb), 0.7) 50%
+        );
+        transition: background 0.1s linear;
+        mix-blend-mode: multiply;
       }
 
-      body.light-mode .following-orb {
-        opacity: 0.2;
-        mix-blend-mode: multiply;
-      }
-      body.light-mode .following-orb-trail {
+      body.light-mode .flashlight-overlay {
         opacity: 0.1;
-        mix-blend-mode: multiply;
       }
 
       .sensory-layer {
@@ -130,7 +128,7 @@
         inset: 0;
         pointer-events: none;
         z-index: 50;
-        opacity: 0.2;
+        opacity: 0.1;
         mix-blend-mode: soft-light;
       }
       
@@ -164,7 +162,6 @@
         backdrop-filter: blur(12px); 
       }
 
-      /* Range Slider Styling */
       input[type="range"] {
         -webkit-appearance: none;
         width: 100%;
@@ -217,8 +214,8 @@
 </head>
 <body class="min-h-screen antialiased">
     <div class="sensory-layer"></div>
+    <div class="flashlight-overlay" aria-hidden="true"></div>
     <div class="following-orb" aria-hidden="true"></div>
-    <div class="following-orb-trail" aria-hidden="true"></div>
     <div class="orb orb-pink" aria-hidden="true"></div>
     <div class="orb orb-green" aria-hidden="true"></div>
     <div id="root"></div>

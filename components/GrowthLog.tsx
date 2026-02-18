@@ -1,5 +1,6 @@
 
-import { useState, useEffect } from 'react';
+// Fix: Import React to resolve 'Cannot find namespace React' error when using React.FC
+import React, { useState, useEffect } from 'react';
 import { GrowthLog as GrowthLogType } from '../types';
 import { cloudService } from '../services/cloudService';
 import { motion as motionBase, AnimatePresence } from 'framer-motion';

@@ -1,4 +1,5 @@
 
+// Fix: Import Component and other types explicitly from react to ensure correct inheritance
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 
 interface Props {
@@ -14,14 +15,12 @@ interface State {
 
 /**
  * ErrorBoundary: A protective layer for the Kindred experience.
- * Catches rendering failures in AI-generated content or complex visual layers
- * and provides a graceful, grounding recovery state.
  */
-// Fix: Explicitly extend React.Component to resolve property access errors in TypeScript environment
-class ErrorBoundary extends React.Component<Props, State> {
+// Fix: Inherit from Component directly to ensure TS correctly identifies inherited members like props and state
+class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    // Fix: Properly initialize state within constructor
+    // Fix: State is initialized in the constructor, inherited from Component
     this.state = {
       hasError: false
     };
@@ -32,16 +31,18 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Fix: Access name prop through 'this' context
-    console.group(`[Kindred Resilience Engine: ${this.props.name || 'System'}]`);
+    // Fix: Access props from the instance context
+    const { name } = this.props;
+    console.group(`[Kindred Resilience Engine: ${name || 'System'}]`);
     console.error("Disturbance detected:", error);
     console.error("Trace:", errorInfo.componentStack);
     console.groupEnd();
   }
 
   private handleRecovery = () => {
-    // Fix: Access props and setState through 'this' context
-    if (this.props.name === 'Global Root') {
+    // Fix: Access props and setState from the instance context
+    const { name } = this.props;
+    if (name === 'Global Root') {
       window.location.reload();
     } else {
       this.setState({ hasError: false, error: undefined });
@@ -49,13 +50,16 @@ class ErrorBoundary extends React.Component<Props, State> {
   };
 
   public render() {
-    // Fix: Access state and props through 'this' context
-    if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+    // Fix: Destructure state and props for cleaner access and better type inference
+    const { hasError, error } = this.state;
+    const { fallback, name, children } = this.props;
+
+    if (hasError) {
+      if (fallback) {
+        return fallback;
       }
 
-      const isGlobal = this.props.name === 'Global Root';
+      const isGlobal = name === 'Global Root';
 
       return (
         <div className={`flex flex-col items-center justify-center p-8 text-center animate-fade-in ${isGlobal ? 'fixed inset-0 z-[1000] bg-[var(--bg-primary)]' : 'min-h-[300px] py-20 bg-current/5 rounded-[3rem] border border-current border-opacity-5'}`}>
@@ -92,7 +96,7 @@ class ErrorBoundary extends React.Component<Props, State> {
             <details className="mt-8 opacity-5 text-left cursor-help text-[8px] max-w-xs overflow-hidden">
                 <summary className="font-bold tracking-widest list-none text-center">Technical Artifacts</summary>
                 <pre className="mt-2 whitespace-pre-wrap font-mono break-all p-2">
-                    {this.state.error?.message}
+                    {error?.message}
                 </pre>
             </details>
           </div>
@@ -100,8 +104,8 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Fix: Access children through 'this' context
-    return this.props.children || null;
+    // Fix: Correctly return the inherited children property
+    return children || null;
   }
 }
 

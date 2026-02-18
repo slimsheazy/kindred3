@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { UserData } from '../types';
 import { cloudService } from '../services/cloudService';
-import { isSupabaseConfigured, updateSupabaseConfig, clearSupabaseConfig } from '../services/supabase';
+import { isSupabaseConfigured } from '../services/supabase';
 import { NotificationService } from '../services/notificationService';
 import { motion as motionBase, AnimatePresence } from 'framer-motion';
 import * as queries from '../lib/supabase/queries';
+import { useUser } from '../components/AppProviders';
 
 // Fix: Cast motion to any to resolve environment-specific type errors with motion component props
 const motion = motionBase as any;
@@ -16,7 +17,7 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
-  const [userData, setUserData] = useState<UserData | null>(null);
+  const { userData, setUserData, motionPermission, requestMotionAccess } = useUser();
   const [activeMessage, setActiveMessage] = useState<string | null>(null);
   const [copySuccess, setCopySuccess] = useState(false);
   const [isLinking, setIsLinking] = useState(false);
@@ -26,10 +27,6 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   const [syncTimestamp, setSyncTimestamp] = useState<number>(Date.now());
   const [foundPartner, setFoundPartner] = useState<{ id: string, userName: string } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-
-  // Cloud Config State
-  const [dbUrl, setDbUrl] = useState(localStorage.getItem('kindred_supabase_url') || '');
-  const [dbKey, setDbKey] = useState(localStorage.getItem('kindred_supabase_key') || '');
 
   const vibes = [
     { label: 'Neutral', emoji: '⚪' },
@@ -41,12 +38,6 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   ];
 
   useEffect(() => {
-    const saved = localStorage.getItem('kindred_user_data');
-    if (saved) {
-        const parsed = JSON.parse(saved);
-        setUserData(parsed);
-    }
-    
     const interval = setInterval(() => setSyncTimestamp(Date.now()), 30000);
     return () => clearInterval(interval);
   }, []);
@@ -109,6 +100,11 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
     }
   };
 
+  const handleMotionRequest = async () => {
+    await requestMotionAccess();
+    showMessage("Motion sensors calibrated.");
+  };
+
   const setVibe = async (vibeLabel: string) => {
     if (!userData) return;
     await cloudService.updateVibe(userData.id, vibeLabel);
@@ -116,37 +112,6 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
     setUserData(updated);
     localStorage.setItem('kindred_user_data', JSON.stringify(updated));
     showMessage(`Vibe set to ${vibeLabel}`);
-  };
-
-  const handleCodeChange = async (val: string) => {
-    setPartnerCodeInput(val);
-    if (val.length > 5) {
-        setIsSearching(true);
-        const p = await cloudService.getPartnerByCode(val);
-        setFoundPartner(p);
-        setIsSearching(false);
-    } else {
-        setFoundPartner(null);
-    }
-  };
-
-  const linkPartner = async () => {
-    if (foundPartner && userData) {
-        await cloudService.linkPartner(userData.id, foundPartner.id);
-        const isMutual = await cloudService.checkMutualLink(userData.id, foundPartner.id);
-        
-        const updated: UserData = { ...userData, partnerCode: foundPartner.id };
-        setUserData(updated);
-        localStorage.setItem('kindred_user_data', JSON.stringify(updated));
-        
-        if (isMutual) {
-            localStorage.setItem('kindred_fusion_pending', 'true');
-        }
-
-        setIsLinking(false);
-        showMessage("Handshake initiated.");
-        window.location.reload();
-    }
   };
 
   const handleLogout = async () => {
@@ -232,21 +197,32 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
                   Send Invitation
                 </button>
               </div>
-              <p className="text-sm opacity-30 mt-6 leading-relaxed">Share this link to initiate real-time synchronization with your partner's space.</p>
             </div>
 
             <div className="pt-8 border-t border-current border-opacity-5">
-              <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Device Resonance</span>
-              <button 
-                onClick={enableNotifications}
-                className="w-full py-5 px-8 border border-current border-opacity-10 rounded-2xl flex justify-between items-center hover:bg-current hover:bg-opacity-5 transition-all"
-              >
-                <span className="text-xs font-bold uppercase tracking-widest opacity-60">PWA Notifications</span>
-                <span className={`text-xs font-bold uppercase tracking-widest ${notificationPermission === 'granted' ? 'text-[var(--accent-green)]' : 'opacity-20'}`}>
-                  {notificationPermission === 'granted' ? 'Enabled' : 'Enable'}
-                </span>
-              </button>
-              <p className="text-[10px] opacity-20 mt-4 leading-relaxed uppercase tracking-wider font-bold">Recommended for iPhone Home Screen Apps</p>
+              <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Environment Logic</span>
+              <div className="space-y-4">
+                <button 
+                  onClick={enableNotifications}
+                  className="w-full py-5 px-8 border border-current border-opacity-10 rounded-2xl flex justify-between items-center hover:bg-current hover:bg-opacity-5 transition-all"
+                >
+                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">Push Notifications</span>
+                  <span className={`text-xs font-bold uppercase tracking-widest ${notificationPermission === 'granted' ? 'text-[var(--accent-green)]' : 'opacity-20'}`}>
+                    {notificationPermission === 'granted' ? 'Enabled' : 'Enable'}
+                  </span>
+                </button>
+                
+                {motionPermission !== 'granted' && motionPermission !== 'unsupported' && (
+                  <button 
+                    onClick={handleMotionRequest}
+                    className="w-full py-5 px-8 border border-current border-opacity-10 rounded-2xl flex justify-between items-center hover:bg-current hover:bg-opacity-5 transition-all animate-pulse"
+                  >
+                    <span className="text-xs font-bold uppercase tracking-widest opacity-60 text-left pr-4">Enable Flashlight Tilt (iOS)</span>
+                    <span className="text-xs font-bold uppercase tracking-widest opacity-20">Activate</span>
+                  </button>
+                )}
+              </div>
+              <p className="text-[10px] opacity-20 mt-4 leading-relaxed uppercase tracking-wider font-bold text-center">Tilt and notification settings refine your presence.</p>
             </div>
           </div>
       </div>
