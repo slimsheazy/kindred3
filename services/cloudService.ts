@@ -1,4 +1,3 @@
-
 import { UserData, Goal, BondScore, ChatMessage, Activity, GrowthLog, CourseModule, MicroStep, JournalEntry, WeeklySynthesis, FoundationSummary } from '../types';
 import { isSupabaseConfigured } from './supabase';
 import * as queries from '../lib/supabase/queries';
@@ -79,7 +78,7 @@ class CloudService {
     try {
       const { data } = await queries.fetchRemoteGoals(partnerCode);
       if (!data) return local;
-      const remote: Goal[] = data.map(d => ({
+      const remote: Goal[] = data.map((d: any) => ({
         id: d.id,
         title: d.title,
         type: 'Couple',
@@ -131,7 +130,7 @@ class CloudService {
     try {
       const { data } = await queries.fetchRemoteScores(partnerCode);
       if (!data || data.length === 0) return this.getLocal<BondScore>(key);
-      return data.map(d => ({ category: d.category, score: d.score, timestamp: new Date(d.updated_at).getTime() }));
+      return data.map((d: any) => ({ category: d.category, score: d.score, timestamp: new Date(d.updated_at).getTime() }));
     } catch (e) { return this.getLocal<BondScore>(key); }
   }
 
@@ -193,7 +192,7 @@ class CloudService {
     if (!this.useLocalStorageOnly) {
       try {
         const { data } = await queries.fetchRemoteGrowthLogs(partnerCode);
-        if (data) return data.map(d => ({ id: d.id, timestamp: new Date(d.created_at).getTime(), category: d.category, delta: d.delta, context: d.context }));
+        if (data) return data.map((d: any) => ({ id: d.id, timestamp: new Date(d.created_at).getTime(), category: d.category, delta: d.delta, context: d.context }));
       } catch (e) {}
     }
     return this.getLocal<GrowthLog>(`kindred_growth_logs_${partnerCode}`);
@@ -205,7 +204,7 @@ class CloudService {
     this.presenceChannel = channel;
     this.lastTrackedData = { id: userId, userName, vibe: vibe || 'Neutral', online_at: new Date().toISOString() };
     channel.on('presence', { event: 'sync' }, () => { const state = channel.presenceState(); onSync(Object.values(state).flat()); })
-      .subscribe(async (status) => { if (status === 'SUBSCRIBED') await channel.track(this.lastTrackedData); });
+      .subscribe(async (status: string) => { if (status === 'SUBSCRIBED') await channel.track(this.lastTrackedData); });
     return () => { channel.unsubscribe(); this.presenceChannel = null; };
   }
 
@@ -258,11 +257,11 @@ class CloudService {
 
   async sendPulse(partnerCode: string, from: string) {
     const channel = queries.createPulseChannel(partnerCode);
-    await channel.subscribe(async (s) => { if (s === 'SUBSCRIBED') { await channel.send({ type: 'broadcast', event: 'pulse', payload: { from, timestamp: Date.now() } }); channel.unsubscribe(); } });
+    await channel.subscribe(async (s: string) => { if (s === 'SUBSCRIBED') { await channel.send({ type: 'broadcast', event: 'pulse', payload: { from, timestamp: Date.now() } }); channel.unsubscribe(); } });
   }
 
   subscribeToPulses(partnerCode: string, onPulse: (p: any) => void) {
-    const channel = queries.createPulseChannel(partnerCode).on('broadcast', { event: 'pulse' }, ({ payload }) => onPulse(payload)).subscribe();
+    const channel = queries.createPulseChannel(partnerCode).on('broadcast', { event: 'pulse' }, ({ payload }: { payload: any }) => onPulse(payload)).subscribe();
     return () => channel.unsubscribe();
   }
 
@@ -300,7 +299,7 @@ class CloudService {
     try {
       const { data } = await queries.fetchRemoteQuizAnswers(partnerCode, topic);
       if (data) {
-        const remote = data.map(d => ({ userId: d.user_id, answers: d.answer, topic: d.topic }));
+        const remote = data.map((d: any) => ({ userId: d.user_id, answers: d.answer, topic: d.topic }));
         this.saveLocal(key, remote);
         return remote;
       }
@@ -346,7 +345,7 @@ class CloudService {
 
   async sendQuizHandshake(partnerCode: string, userId: string, topic: string) {
     const channel = queries.createPulseChannel(`quiz_handshake:${partnerCode}`);
-    await channel.subscribe(async (s) => {
+    await channel.subscribe(async (s: string) => {
       if (s === 'SUBSCRIBED') {
         await channel.send({ type: 'broadcast', event: 'handshake', payload: { userId, topic, timestamp: Date.now() } });
         channel.unsubscribe();
@@ -356,7 +355,7 @@ class CloudService {
 
   subscribeToQuizHandshake(partnerCode: string, onHandshake: (payload: any) => void) {
     const channel = queries.createPulseChannel(`quiz_handshake:${partnerCode}`)
-      .on('broadcast', { event: 'handshake' }, ({ payload }) => onHandshake(payload))
+      .on('broadcast', { event: 'handshake' }, ({ payload }: { payload: any }) => onHandshake(payload))
       .subscribe();
     return () => channel.unsubscribe();
   }

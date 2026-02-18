@@ -13,10 +13,13 @@ export const getAiClient = (): GoogleGenAI => {
 
 export const getCleanText = (response: GenerateContentResponse): string => {
   try {
-    return response.text.trim();
-  } catch (e) {
+    const text = response.text;
+    if (text) return text.trim();
+    
     const parts = response.candidates?.[0]?.content?.parts || [];
     return parts.filter(p => p.text).map(p => p.text).join("").trim();
+  } catch (e) {
+    return "";
   }
 };
 
