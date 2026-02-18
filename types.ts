@@ -10,6 +10,7 @@ export enum View {
   Rituals = 'RITUALS',
   SalsaDeck = 'SALSA_DECK',
   EmotionWheel = 'EMOTION_WHEEL',
+  Workbook = 'WORKBOOK',
 }
 
 export interface SalsaCard {

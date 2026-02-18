@@ -332,7 +332,7 @@ class CloudService {
     }
   }
 
-  async saveQuizAnswer(partnerCode: string, userId: string, topic: string, answers: Record<string, string>): Promise<void> {
+  async saveQuizAnswer(partnerCode: string, userId: string, topic: string, answers: Record<string, string | any>): Promise<void> {
     const key = `kindred_quiz_answers_${partnerCode}_${topic}`;
     const local = this.getLocal<any>(key);
     const updated = [...local.filter(a => a.userId !== userId), { userId, answers, topic }];

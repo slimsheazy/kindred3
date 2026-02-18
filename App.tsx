@@ -15,6 +15,7 @@ const Quiz = lazy(() => import('./views/Quiz'));
 const Rituals = lazy(() => import('./views/Rituals'));
 const SalsaDeck = lazy(() => import('./views/SalsaDeck'));
 const EmotionWheel = lazy(() => import('./views/EmotionWheel'));
+const Workbook = lazy(() => import('./views/Workbook'));
 const Onboarding = lazy(() => import('./views/Onboarding'));
 
 const AppContent: React.FC = () => {
@@ -53,6 +54,7 @@ const AppContent: React.FC = () => {
       case View.Rituals: return <Rituals />;
       case View.SalsaDeck: return <SalsaDeck onBack={() => setCurrentView(View.Activities)} />;
       case View.EmotionWheel: return <EmotionWheel onBack={() => setCurrentView(View.Activities)} />;
+      case View.Workbook: return <Workbook />;
       case View.Profile: return (
         <Profile 
           onReset={() => setHasOnboarded(false)} 
