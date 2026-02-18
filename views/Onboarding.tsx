@@ -11,7 +11,7 @@ import { sensoryService } from '../services/sensoryService';
 interface OnboardingProps { onComplete: (data: UserData) => void; }
 
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
-  const [step, setStep] = useState<'welcome' | 'auth' | 'join_code' | 'profile' | 'assessment' | 'intentions' | 'recovering' | 'check_email'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'auth' | 'join_code' | 'profile' | 'relational_age' | 'assessment' | 'intentions' | 'recovering' | 'check_email'>('welcome');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +19,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   const [foundPartner, setFoundPartner] = useState<{ id: string, userName: string } | null>(null);
   
   const [data, setData] = useState<UserData>({
-    id: '', userName: '', partnerName: '', yearsTogether: '', focusAreas: [],
+    id: '', userName: '', partnerName: '', yearsTogether: '1-3', focusAreas: [],
     partnerCode: '', syncStatus: 'offline', theme: 'midnight'
   });
   
@@ -90,7 +90,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     }
     setError(null);
     sensoryService.tap();
-    setStep('assessment');
+    setStep('relational_age');
   };
 
   const finalize = async () => {
@@ -108,7 +108,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     
     try {
       if (!foundPartner) {
-        // Only initialize scores if we are the creator
         await cloudService.initializeBondScores(code, finalScores);
       }
       await cloudService.signUp(finalData);
@@ -200,8 +199,27 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 )}
               </div>
               {error && <p className="text-xs text-[var(--accent-pink)] text-center font-bold">{error}</p>}
-              <button onClick={nextFromProfile} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] shadow-xl">Calibrate Bond</button>
+              <button onClick={nextFromProfile} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] shadow-xl">Calibrate Presence</button>
             </div>
+          )}
+
+          {step === 'relational_age' && (
+            <motion.div key="age" className="space-y-12 text-center" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}>
+              <h2 className="text-clamp-5xl font-light">Duration.</h2>
+              <p className="text-lg italic opacity-60">How long has this bond been evolving?</p>
+              <div className="grid grid-cols-1 gap-4">
+                {["0-1", "1-3", "3-7", "7+"].map((age) => (
+                  <button
+                    key={age}
+                    onClick={() => { setData({ ...data, yearsTogether: age }); sensoryService.tap(); setStep('assessment'); }}
+                    className={`py-8 rounded-[2.5rem] border text-xl font-light transition-all ${data.yearsTogether === age ? 'bg-current text-[var(--bg-primary)]' : 'border-current border-opacity-10 opacity-60 hover:opacity-100'}`}
+                  >
+                    {age} {age === "7+" ? "Years and beyond" : "Years"}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setStep('profile')} className="text-xs font-bold uppercase tracking-widest opacity-30">Back</button>
+            </motion.div>
           )}
 
           {step === 'assessment' && (

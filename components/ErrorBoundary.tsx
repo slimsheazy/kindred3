@@ -1,12 +1,11 @@
 
-import React, { ErrorInfo, ReactNode, Component } from 'react';
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 
+// Fix: ErrorBoundaryProps should not include 'key' as it's an internal React prop and doesn't appear in this.props.
 interface ErrorBoundaryProps {
   children?: ReactNode;
   fallback?: ReactNode;
   name?: string;
-  // Explicitly add key to satisfy strict prop checks in some environments
-  key?: string | number | null;
 }
 
 interface ErrorBoundaryState {
@@ -16,23 +15,24 @@ interface ErrorBoundaryState {
 
 /**
  * ErrorBoundary: A protective layer for the Kindred experience.
- * Reverted to standard React.Component pattern to resolve property overwrite conflicts.
- * Explicitly declaring state and using named import for Component to ensure robust inheritance.
+ * This class handles runtime errors in the component tree and offers recovery options.
  */
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public override state: ErrorBoundaryState = {
-    hasError: false
-  };
-
+// Fix: Using React.Component explicitly helps resolve issues where named imports might not correctly provide instance types for state and props.
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // Fix: Properly initialize state in the constructor and ensure super(props) is called to establish the component instance.
   constructor(props: ErrorBoundaryProps) {
     super(props);
+    this.state = {
+      hasError: false
+    };
   }
 
   public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  // Fix: componentDidCatch now correctly recognizes 'this.props' inherited from React.Component.
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const { name } = this.props;
     console.group(`[Kindred Resilience Engine: ${name || 'System'}]`);
     console.error("Disturbance detected:", error);
@@ -40,6 +40,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     console.groupEnd();
   }
 
+  // Fix: Arrow function property handleRecovery correctly accesses this.props and this.setState from the React.Component base class.
   private handleRecovery = () => {
     const { name } = this.props;
     if (name === 'Global Root') {
@@ -49,7 +50,8 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     }
   };
 
-  public override render(): ReactNode {
+  // Fix: render method correctly destructures state and props from 'this' which are provided by the React.Component inheritance.
+  public render(): ReactNode {
     const { hasError, error } = this.state;
     const { fallback, name, children } = this.props;
 
@@ -103,7 +105,6 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       );
     }
 
-    // Explicitly return null if no children to satisfy ReactNode requirements
     return children || null;
   }
 }

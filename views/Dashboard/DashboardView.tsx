@@ -1,13 +1,15 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import DailyPrompt from '../../components/DailyPrompt';
 import AICoach from '../../components/AICoach';
 import GrowthLog from '../../components/GrowthLog';
-import { UserData, CourseModule, Lesson } from '../../types';
+import { UserData, CourseModule, Lesson, FoundationSummary, View } from '../../types';
 import { Button } from '../../components/atoms/Button';
 import Markdown from 'markdown-to-jsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import { cloudService } from '../../services/cloudService';
+import { generateProactiveNudge } from '../../services/ai/coaching';
 
 const KnowledgeMeter: React.FC<{ score: number, loading?: boolean }> = ({ score, loading }) => {
   const size = 200;
@@ -123,6 +125,9 @@ interface DashboardViewProps {
   onPulse: () => void;
   onSelectModule: (m: CourseModule | null) => void;
   onSelectLesson: (l: Lesson | null) => void;
+  revealAvailable?: boolean;
+  onStartReveal?: () => void;
+  onNavigate?: (view: View) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -137,12 +142,68 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   selectedLesson,
   onPulse,
   onSelectModule,
-  onSelectLesson
+  onSelectLesson,
+  revealAvailable,
+  onStartReveal,
+  onNavigate
 }) => {
+  const [foundation, setFoundation] = useState<FoundationSummary | null>(null);
+  const [showAura, setShowAura] = useState(false);
+  const [proactiveWhisper, setProactiveWhisper] = useState<string | null>(null);
+  const [pendingCollaborations, setPendingCollaborations] = useState<{ topic: string, type: 'quiz' | 'ritual' }[]>([]);
   const knowledgeScore = bondScores.find(s => s.category === 'Knowledge')?.score || 0;
+
+  useEffect(() => {
+    if (userData?.partnerCode) {
+      cloudService.getLatestFoundationSummary(userData.partnerCode).then(setFoundation);
+      
+      const refreshStatus = async () => {
+        const pending = await cloudService.getPendingCollaborations(userData.partnerCode!, userData.id);
+        setPendingCollaborations(pending);
+      };
+
+      const unsub = cloudService.subscribeToPulses(userData.partnerCode, (p) => {
+        if (p.from !== userData.id) {
+          setShowAura(true);
+          setTimeout(() => setShowAura(false), 5000);
+          refreshStatus();
+        }
+      });
+
+      // Also subscribe to database changes for quiz answers
+      const unsubSpace = cloudService.subscribeToPartnerSpace(userData.partnerCode, refreshStatus);
+
+      // Periodic check for proactive whispers
+      const fetchWhisper = async () => {
+        const logs = await cloudService.getGrowthLogs(userData.partnerCode!);
+        const result = await generateProactiveNudge(userData, bondScores, logs);
+        if (result.data) setProactiveWhisper(result.data);
+      };
+
+      refreshStatus();
+      if (bondScores.length > 0) fetchWhisper();
+
+      return () => {
+        unsub();
+        unsubSpace();
+      };
+    }
+  }, [userData, bondScores]);
 
   return (
     <div className="px-6 py-12 max-w-xl mx-auto relative min-h-screen">
+        {/* Received Pulse Aura */}
+        <AnimatePresence>
+          {showAura && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.15 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-[var(--accent-pink)] pointer-events-none z-[-1] blur-[100px]"
+            />
+          )}
+        </AnimatePresence>
+
         <header className="mb-12 flex justify-between items-center text-[var(--text-primary)]">
             <div>
               <h1 className="text-clamp-6xl font-light mb-3">{userData?.userName ? `Hello, ${userData.userName}.` : 'Kindred.'}</h1>
@@ -151,17 +212,110 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                  <p className="text-[10px] font-bold uppercase tracking-[0.3em] opacity-40">Partner is {isPartnerOnline ? 'Active' : 'Away'}</p>
               </div>
             </div>
-            <button onClick={onPulse} className="w-14 h-14 rounded-full border border-current border-opacity-10 bg-current/5 flex items-center justify-center transition-all active:scale-90 text-xl opacity-30 hover:opacity-100">❤</button>
+            <button 
+              onClick={onPulse} 
+              className={`w-14 h-14 rounded-full border border-current border-opacity-10 bg-current/5 flex items-center justify-center transition-all active:scale-90 text-xl ${showAura ? 'text-[var(--accent-pink)] border-[var(--accent-pink)] shadow-lg scale-110' : 'opacity-30 hover:opacity-100'}`}
+            >
+              ❤
+            </button>
         </header>
+
+        {/* Pending Resonance Alerts (Handshake Notifications) */}
+        <AnimatePresence>
+          {pendingCollaborations.length > 0 && (
+            <motion.section 
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-12 space-y-4"
+            >
+              <span className="text-[8px] font-bold uppercase tracking-[0.4em] opacity-30 px-2 block heading-font">Partner is Waiting</span>
+              {pendingCollaborations.map((collab, i) => (
+                <button 
+                  key={i}
+                  onClick={() => onNavigate?.(collab.type === 'quiz' ? View.Quiz : View.Rituals)}
+                  className="w-full flex items-center justify-between p-6 bg-current/5 border border-[var(--accent-pink)]/20 rounded-[2rem] hover:bg-current/10 transition-all text-left"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-8 h-8 rounded-full bg-[var(--accent-pink)]/10 flex items-center justify-center">
+                       <div className="w-1.5 h-1.5 bg-[var(--accent-pink)] rounded-full animate-ping" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold uppercase tracking-widest opacity-80">{collab.topic}</span>
+                      <span className="text-[9px] italic opacity-40">Tap to complete shared resonance</span>
+                    </div>
+                  </div>
+                  <span className="text-xl opacity-20">→</span>
+                </button>
+              ))}
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Oracle Proactive Whisper Bubble */}
+        <AnimatePresence>
+          {proactiveWhisper && (
+            <motion.section 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-12 p-8 bg-current/2 border-l-2 border-[var(--accent-pink)] rounded-r-[2rem] relative group"
+            >
+              <span className="text-[8px] font-bold uppercase tracking-[0.4em] opacity-30 mb-4 block heading-font">Oracle Whisper</span>
+              <p className="text-lg italic font-light leading-relaxed opacity-80">
+                {proactiveWhisper}
+              </p>
+              <button 
+                onClick={() => setProactiveWhisper(null)} 
+                className="absolute top-4 right-4 opacity-0 group-hover:opacity-20 text-[10px] font-bold"
+              >✕</button>
+            </motion.section>
+          )}
+        </AnimatePresence>
 
         <ErrorBoundary name="Daily Prompt Service">
           <DailyPrompt />
         </ErrorBoundary>
 
-        {/* New Knowledge Meter Section */}
+        {/* Weekly Reveal Invitation */}
+        <AnimatePresence>
+          {revealAvailable && (
+            <motion.section 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="mb-12 p-8 bg-gradient-to-br from-[var(--accent-pink)]/10 to-[var(--accent-green)]/10 border border-current border-opacity-5 rounded-[3rem] text-center shadow-xl relative overflow-hidden group cursor-pointer"
+              onClick={onStartReveal}
+            >
+              <div className="absolute inset-0 bg-current opacity-0 group-hover:opacity-5 transition-opacity" />
+              <span className="text-[9px] font-bold uppercase tracking-[0.4em] opacity-40 mb-4 block heading-font">A New Frequency Awaits</span>
+              <h2 className="text-3xl font-light mb-4 italic">The Weekly Reveal.</h2>
+              <p className="text-sm opacity-60 font-light mb-8 max-w-[280px] mx-auto leading-relaxed">Gather your thoughts and enter the synthesis of your shared breath.</p>
+              <Button onClick={(e) => { e.stopPropagation(); onStartReveal?.(); }} variant="secondary" size="md">Enter Synthesis</Button>
+            </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* Knowledge Meter Section */}
         <section className="animate-fade-in-up">
           <KnowledgeMeter score={knowledgeScore} loading={scoresLoading} />
         </section>
+
+        {/* Foundation Summary Display */}
+        {foundation && (
+          <motion.section 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-16 p-10 bg-current/2 border border-current border-opacity-5 rounded-[3rem] text-center italic font-light relative overflow-hidden"
+          >
+            <span className="text-[9px] font-bold uppercase tracking-[0.4em] opacity-30 mb-6 block heading-font">Our Shared Foundation</span>
+            <div className="prose prose-stone dark:prose-invert text-lg leading-relaxed opacity-70">
+              <Markdown>{foundation.content}</Markdown>
+            </div>
+            <div className="absolute bottom-0 right-0 p-4 opacity-5 pointer-events-none">
+              <span className="text-4xl">⚓</span>
+            </div>
+          </motion.section>
+        )}
 
         <BondMap scores={bondScores} showHistory={true} loading={scoresLoading} />
         
@@ -213,9 +367,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <button onClick={() => onSelectModule(null)} className="text-[10px] font-bold uppercase opacity-40 border-b border-current pb-1">Close</button>
                </header>
                <div className="space-y-5 max-w-lg mx-auto">
-                  {selectedModule.content?.map((lesson) => (
+                  {modulesLoading ? (
+                    <div className="flex flex-col items-center py-20 gap-8 animate-pulse">
+                      <div className="w-12 h-12 border-2 border-current border-t-transparent rounded-full animate-spin opacity-20" />
+                      <p className="text-[10px] font-bold uppercase tracking-[0.4em] opacity-30 heading-font">Architecting Lessons...</p>
+                    </div>
+                  ) : selectedModule.content?.map((lesson) => (
                       <button key={lesson.id} onClick={() => onSelectLesson(lesson)} className="w-full text-left p-8 border border-current border-opacity-5 rounded-[2rem] bg-current/2 flex justify-between items-center group">
-                         <div className="flex flex-col"><h4 className="text-xl font-light">{lesson.title}</h4></div>
+                         <div className="flex flex-col">
+                           <span className="text-[8px] font-bold uppercase tracking-widest opacity-30 mb-1">{lesson.type}</span>
+                           <h4 className="text-xl font-light">{lesson.title}</h4>
+                         </div>
                          <span className="opacity-20 group-hover:opacity-100 transition-opacity">→</span>
                       </button>
                   ))}

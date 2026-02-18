@@ -18,6 +18,51 @@ const EmotionWheel = lazy(() => import('./views/EmotionWheel'));
 const Workbook = lazy(() => import('./views/Workbook'));
 const Onboarding = lazy(() => import('./views/Onboarding'));
 
+const SafetyShield: React.FC = () => {
+  const [isShielded, setIsShielded] = useState(false);
+  
+  const toggleShield = () => {
+    sensoryService.tap();
+    setIsShielded(!isShielded);
+  };
+
+  const emergencyExit = () => {
+    window.location.href = "https://www.google.com/news";
+  };
+
+  return (
+    <>
+      <button 
+        onClick={toggleShield}
+        className="fixed top-6 right-6 z-[1000] w-10 h-10 rounded-full border border-current border-opacity-10 bg-[var(--bg-primary)] flex items-center justify-center opacity-30 hover:opacity-100 transition-opacity"
+        title="Privacy Shield"
+      >
+        <span className="text-xs">{isShielded ? '◈' : '◇'}</span>
+      </button>
+
+      {isShielded && (
+        <div className="fixed inset-0 z-[999] bg-[var(--bg-primary)] flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+          <h2 className="text-clamp-4xl font-light mb-8">Discretion Active.</h2>
+          <div className="space-y-6 w-full max-w-xs">
+            <button 
+              onClick={toggleShield}
+              className="w-full py-5 border border-current rounded-full text-[10px] font-bold uppercase tracking-widest"
+            >
+              Resume Presence
+            </button>
+            <button 
+              onClick={emergencyExit}
+              className="w-full py-5 bg-[var(--accent-pink)] text-black rounded-full text-[10px] font-bold uppercase tracking-widest"
+            >
+              Emergency Exit
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
 const AppContent: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>(View.Dashboard);
   const { userData, setUserData, hasOnboarded, setHasOnboarded, isValidating } = useUser();
@@ -67,8 +112,8 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="min-h-screen relative bg-[var(--bg-primary)]" role="main">
+      <SafetyShield />
       <main className="pb-32 overflow-x-hidden">
-        {/* ErrorBoundary using key to reset its internal state when view changes */}
         <ErrorBoundary name={`View: ${currentView}`} key={currentView}>
           <Suspense fallback={<LoadingScreen message="Syncing..." />}>
             {renderView()}

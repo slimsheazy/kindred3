@@ -1,7 +1,7 @@
 
 import { Type } from "@google/genai";
-import { MicroStep, Goal, QuizQuestion, Activity, AiResult, SalsaCard } from "../../types";
-import { getAiClient, getCleanText, extractJson } from "./core";
+import { MicroStep, Goal, QuizQuestion, Activity, AiResult, SalsaCard, Lesson, UserData } from "../../types";
+import { getAiClient, getCleanText, extractJson, getSystemPrompt } from "./core";
 import * as schemas from "../../lib/schemas";
 
 export const generateEmotionSoulPrompt = async (emotion: string): Promise<AiResult<string>> => {
@@ -16,6 +16,46 @@ export const generateEmotionSoulPrompt = async (emotion: string): Promise<AiResu
       config: { temperature: 0.9 }
     });
     return { data: getCleanText(response), error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
+};
+
+export const generateModuleLessons = async (moduleTitle: string, moduleDesc: string, user: UserData | null): Promise<AiResult<Lesson[]>> => {
+  const ai = getAiClient();
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `As Kindred, the Oracle for ${user?.userName} and ${user?.partnerName}, generate 3 distinct lessons for the module: "${moduleTitle}" (${moduleDesc}). 
+      
+      Requirements:
+      - One 'Reading': Profound psychological insight.
+      - One 'Exercise': A collaborative physical or emotional task.
+      - One 'Prompt': A deep vulnerability conversation starter.
+      
+      Each lesson needs a title, type, short description, and longContent (in Markdown).
+      Return as a JSON array of Lesson objects.`,
+      config: {
+        systemInstruction: getSystemPrompt(user),
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              title: { type: Type.STRING },
+              type: { type: Type.STRING, enum: ["Reading", "Exercise", "Prompt"] },
+              description: { type: Type.STRING },
+              longContent: { type: Type.STRING }
+            },
+            required: ["id", "title", "type", "description", "longContent"]
+          }
+        }
+      }
+    });
+    const raw = JSON.parse(extractJson(getCleanText(response)));
+    return { data: raw, error: null };
   } catch (e: any) {
     return { data: null, error: e.message };
   }

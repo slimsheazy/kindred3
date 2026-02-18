@@ -273,6 +273,7 @@ class CloudService {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'learning_paths', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'goals', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quiz_answers', filter: `partner_code=eq.${partnerCode}` }, onUpdate)
       .subscribe();
     return () => { channel.unsubscribe(); };
   }
@@ -323,7 +324,7 @@ class CloudService {
   }
 
   async saveQuizSynthesis(partnerCode: string, topic: string, synthesis: string): Promise<void> {
-    const key = `kindred_quiz_synthesis_${partnerCode}_${topic}`;
+    const key = `kindred_quiz_synthesis_${partnerCode}_topic`;
     localStorage.setItem(key, synthesis);
     if (!this.useLocalStorageOnly) {
       try {
@@ -359,6 +360,45 @@ class CloudService {
       .on('broadcast', { event: 'handshake' }, ({ payload }: { payload: any }) => onHandshake(payload))
       .subscribe();
     return () => { channel.unsubscribe(); };
+  }
+
+  /**
+   * Scans for any pending shared exercises where the partner has answered but the user hasn't.
+   */
+  async getPendingCollaborations(partnerCode: string, userId: string): Promise<{ topic: string, type: 'quiz' | 'ritual' }[]> {
+    const pending: { topic: string, type: 'quiz' | 'ritual' }[] = [];
+    
+    const quizTopics = ['Love Maps', 'Attachment Patterns', 'Love Languages', 'Conflict Styles', 'Shared Meaning'];
+    const ritualIds = ['social', 'rhythm', 'celebrations', 'intimacy'];
+
+    // Scan Quizzes
+    for (const topic of quizTopics) {
+      const [ans, synth] = await Promise.all([
+        this.getQuizAnswers(partnerCode, topic),
+        this.getQuizSynthesis(partnerCode, topic)
+      ]);
+      const myAns = ans.find(a => a.userId === userId);
+      const partnerAns = ans.find(a => a.userId !== userId);
+      if (partnerAns && !myAns && !synth) {
+        pending.push({ topic, type: 'quiz' });
+      }
+    }
+
+    // Scan Rituals
+    for (const id of ritualIds) {
+      const topic = `ritual_${id}`;
+      const [ans, synth] = await Promise.all([
+        this.getQuizAnswers(partnerCode, topic),
+        this.getQuizSynthesis(partnerCode, topic)
+      ]);
+      const myAns = ans.find(a => a.userId === userId);
+      const partnerAns = ans.find(a => a.userId !== userId);
+      if (partnerAns && !myAns && !synth) {
+        pending.push({ topic: topic.replace('ritual_', 'Ritual: '), type: 'ritual' });
+      }
+    }
+
+    return pending;
   }
 
   /**

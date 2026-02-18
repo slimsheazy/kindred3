@@ -1,9 +1,8 @@
-
-import { ENV } from '../lib/config';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, Type, FunctionDeclaration } from '@google/genai';
-import { UserData } from '../types';
+import { UserData, JournalEntry } from '../types';
 import { generateMediationDebrief } from '../services/geminiService';
+import { cloudService } from '../services/cloudService';
 import { sensoryService } from '../services/sensoryService';
 import Markdown from 'markdown-to-jsx';
 
@@ -11,6 +10,8 @@ interface ConflictNavigatorProps {
   userData: UserData | null;
   onClose: () => void;
 }
+
+type ConnectionStatus = 'idle' | 'initializing' | 'active' | 'interrupted' | 'reconnecting' | 'failed';
 
 function encode(bytes: Uint8Array) {
   let binary = '';
@@ -44,9 +45,10 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
   const [transcription, setTranscription] = useState('');
   const [stability, setStability] = useState(1); 
   const [volume, setVolume] = useState(0);
-  const [isInitializing, setIsInitializing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('idle');
   const [debrief, setDebrief] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
 
   const audioContexts = useRef<{ input?: AudioContext, output?: AudioContext }>({});
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
@@ -54,6 +56,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
   const nextStartTimeRef = useRef<number>(0);
   const ambientMusicRef = useRef<{ nodes: any[], ctx: AudioContext | null }>({ nodes: [], ctx: null });
   const fullTranscriptRef = useRef<string>('');
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   const setMediationState: FunctionDeclaration = {
     name: 'setMediationState',
@@ -80,6 +83,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
   };
 
   const startAmbientMusic = (ctx: AudioContext) => {
+    if (ambientMusicRef.current.nodes.length > 0) return;
     const masterGain = ctx.createGain();
     masterGain.gain.setValueAtTime(0, ctx.currentTime);
     masterGain.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 5);
@@ -118,21 +122,56 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
     }
   };
 
+  const archiveDebrief = async (content: string) => {
+    if (!userData) return;
+    const partnerCode = userData.partnerCode || userData.id;
+    const entry: JournalEntry = {
+      id: `alchemy-${Date.now()}`,
+      authorId: 'kindred-oracle',
+      author: 'Kindred Oracle',
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      timestamp: Date.now(),
+      text: `[Alchemy Debrief]: ${content}`,
+      themeTags: ['Alchemy', 'Conflict Resolution', 'Oracle Vision']
+    };
+    await cloudService.saveJournalEntry(partnerCode, entry);
+  };
+
+  const cleanupSession = async () => {
+    if (sessionPromiseRef.current) {
+      try {
+        const session = await sessionPromiseRef.current;
+        session.close();
+      } catch (e) {}
+      sessionPromiseRef.current = null;
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(t => t.stop());
+      micStreamRef.current = null;
+    }
+    for (const s of sourcesRef.current) {
+      try { s.stop(); } catch (e) {}
+    }
+    sourcesRef.current.clear();
+    nextStartTimeRef.current = 0;
+  };
+
   const handleEndSession = async () => {
     if (isSummarizing) return;
     sensoryService.tap();
     setIsSummarizing(true);
     
-    if (sessionPromiseRef.current) {
-        const session = await sessionPromiseRef.current;
-        session.close();
-    }
+    await cleanupSession();
     stopAmbientMusic();
 
     if (fullTranscriptRef.current.trim()) {
         try {
             const debriefResult = await generateMediationDebrief(fullTranscriptRef.current);
-            setDebrief(debriefResult.data || debriefResult.error || "The dialogue has ended in peace.");
+            const content = debriefResult.data || debriefResult.error || "The dialogue has ended in peace.";
+            setDebrief(content);
+            if (debriefResult.data) {
+                await archiveDebrief(debriefResult.data);
+            }
             sensoryService.success();
         } catch (err) {
             console.error("Debrief generation failed", err);
@@ -145,134 +184,154 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
     }
   };
 
-  const startMediation = async () => {
-    if (!ENV.API_KEY || isInitializing) return;
+  const startMediation = async (isRetry = false) => {
+    if (!process.env.API_KEY || connectionStatus === 'initializing' || connectionStatus === 'reconnecting') return;
     
     sensoryService.tap();
-    setIsInitializing(true);
+    setConnectionStatus(isRetry ? 'reconnecting' : 'initializing');
     setIsPreflight(false);
 
-    const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-    const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-    audioContexts.current = { input: inputCtx, output: outputCtx };
-    
-    startAmbientMusic(outputCtx);
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ai = new GoogleGenAI({ apiKey: ENV.API_KEY });
+    if (isRetry) await cleanupSession();
 
-    const sessionPromise = ai.live.connect({
-      model: 'gemini-2.5-flash-native-audio-preview-12-2025',
-      callbacks: {
-        onopen: () => {
-          const source = inputCtx.createMediaStreamSource(stream);
-          const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
-          scriptProcessor.onaudioprocess = (e) => {
-            const inputData = e.inputBuffer.getChannelData(0);
-            let sum = 0;
-            for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
-            const vol = Math.sqrt(sum / inputData.length);
-            setVolume(vol);
+    try {
+      const inputCtx = audioContexts.current.input || new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const outputCtx = audioContexts.current.output || new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      audioContexts.current = { input: inputCtx, output: outputCtx };
+      
+      startAmbientMusic(outputCtx);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
-            const pcmBlob: Blob = { 
-                data: encode(new Uint8Array(new Int16Array(inputData.map(v => v * 32768)).buffer)), 
-                mimeType: 'audio/pcm;rate=16000' 
+      const sessionPromise = ai.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        callbacks: {
+          onopen: () => {
+            setConnectionStatus('active');
+            setReconnectAttempt(0);
+            const source = inputCtx.createMediaStreamSource(stream);
+            const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
+            scriptProcessor.onaudioprocess = (e) => {
+              if (connectionStatus !== 'active' && connectionStatus !== 'reconnecting') return;
+              const inputData = e.inputBuffer.getChannelData(0);
+              let sum = 0;
+              for (let i = 0; i < inputData.length; i++) sum += inputData[i] * inputData[i];
+              const vol = Math.sqrt(sum / inputData.length);
+              setVolume(vol);
+
+              const pcmBlob: Blob = { 
+                  data: encode(new Uint8Array(new Int16Array(inputData.map(v => v * 32768)).buffer)), 
+                  mimeType: 'audio/pcm;rate=16000' 
+              };
+              sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
             };
-            sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
-          };
-          source.connect(scriptProcessor);
-          scriptProcessor.connect(inputCtx.destination);
-        },
-        onmessage: async (message: LiveServerMessage) => {
-          if (message.toolCall?.functionCalls) {
-            for (const fc of message.toolCall.functionCalls) {
-              if (fc.name === 'setMediationState') {
-                const { newPhase, speakerName, tensionLevel } = fc.args as any;
-                if (newPhase) {
-                  if (newPhase === 'intervention') sensoryService.alert();
-                  else if (newPhase === 'mediation') sensoryService.tap();
-                  setPhase(newPhase);
-                }
-                if (speakerName !== undefined) {
-                   if (speakerName !== activeSpeaker && speakerName !== null) {
-                     sensoryService.tap();
-                   }
-                   setActiveSpeaker(speakerName);
-                }
-                if (tensionLevel !== undefined) {
-                  if (tensionLevel > 0.8 && stability > 0.2) {
-                    sensoryService.shiver(); // High tension shiver
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(inputCtx.destination);
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            if (message.toolCall?.functionCalls) {
+              for (const fc of message.toolCall.functionCalls) {
+                if (fc.name === 'setMediationState') {
+                  const { newPhase, speakerName, tensionLevel } = fc.args as any;
+                  if (newPhase) {
+                    if (newPhase === 'intervention') sensoryService.alert();
+                    else if (newPhase === 'mediation') sensoryService.tap();
+                    setPhase(newPhase);
                   }
-                  setStability(1 - tensionLevel);
+                  if (speakerName !== undefined) {
+                     if (speakerName !== activeSpeaker && speakerName !== null) sensoryService.tap();
+                     setActiveSpeaker(speakerName);
+                  }
+                  if (tensionLevel !== undefined) {
+                    if (tensionLevel > 0.8 && stability > 0.2) sensoryService.shiver();
+                    setStability(1 - tensionLevel);
+                  }
+                  sessionPromise.then(s => s.sendToolResponse({
+                    functionResponses: { id: fc.id, name: fc.name, response: { result: 'ok' } }
+                  }));
                 }
-                
-                sessionPromise.then(s => s.sendToolResponse({
-                  functionResponses: { id: fc.id, name: fc.name, response: { result: 'ok' } }
-                }));
               }
             }
-          }
 
-          if (message.serverContent?.outputTranscription) {
-              const text = message.serverContent.outputTranscription.text;
-              fullTranscriptRef.current += ' ' + text;
-              setTranscription(t => (t + ' ' + text).slice(-150));
-          }
-
-          if (message.serverContent?.inputTranscription) {
-              fullTranscriptRef.current += ' ' + message.serverContent.inputTranscription.text;
-          }
-
-          const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
-          if (base64Audio) {
-            const rawBytes = decode(base64Audio);
-            const chunkDuration = (rawBytes.byteLength / 2) / 24000;
-            const startTime = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
-            nextStartTimeRef.current = startTime + chunkDuration;
-
-            const audioBuffer = await decodeAudioData(rawBytes, outputCtx, 24000, 1);
-            const source = outputCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(outputCtx.destination);
-            
-            source.addEventListener('ended', () => {
-              sourcesRef.current.delete(source);
-            });
-
-            source.start(startTime);
-            sourcesRef.current.add(source);
-          }
-
-          if (message.serverContent?.interrupted) {
-            for (const s of sourcesRef.current) {
-              try { s.stop(); } catch (e) {}
+            if (message.serverContent?.outputTranscription) {
+                const text = message.serverContent.outputTranscription.text;
+                fullTranscriptRef.current += ' ' + text;
+                setTranscription(t => (t + ' ' + text).slice(-150));
             }
-            sourcesRef.current.clear();
-            nextStartTimeRef.current = 0;
+
+            if (message.serverContent?.inputTranscription) {
+                fullTranscriptRef.current += ' ' + message.serverContent.inputTranscription.text;
+            }
+
+            const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+            if (base64Audio) {
+              const rawBytes = decode(base64Audio);
+              const chunkDuration = (rawBytes.byteLength / 2) / 24000;
+              const startTime = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
+              nextStartTimeRef.current = startTime + chunkDuration;
+
+              const audioBuffer = await decodeAudioData(rawBytes, outputCtx, 24000, 1);
+              const source = outputCtx.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(outputCtx.destination);
+              source.addEventListener('ended', () => { sourcesRef.current.delete(source); });
+              source.start(startTime);
+              sourcesRef.current.add(source);
+            }
+
+            if (message.serverContent?.interrupted) {
+              for (const s of sourcesRef.current) try { s.stop(); } catch (e) {}
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = 0;
+            }
+          },
+          onerror: (e) => {
+            console.error("Session error:", e);
+            setConnectionStatus('interrupted');
+          },
+          onclose: () => {
+            console.warn("Session closed unexpectedly");
+            if (connectionStatus === 'active') setConnectionStatus('interrupted');
           }
         },
-        onerror: (e) => console.error("Session error:", e),
-      },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        outputAudioTranscription: {},
-        inputAudioTranscription: {},
-        tools: [{ functionDeclarations: [setMediationState] }],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-        systemInstruction: `You are Kindred, a master conflict mediator. You are facilitating a safe dialogue between ${userData?.userName} and ${userData?.partnerName}.`,
-      }
-    });
-    sessionPromiseRef.current = sessionPromise;
+        config: {
+          responseModalities: [Modality.AUDIO],
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
+          tools: [{ functionDeclarations: [setMediationState] }],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
+          systemInstruction: `You are Kindred, a master conflict mediator. You are facilitating a safe dialogue between ${userData?.userName} and ${userData?.partnerName}. Your tone is calm, profound, and architectural.`,
+        }
+      });
+      sessionPromiseRef.current = sessionPromise;
+    } catch (err) {
+      console.error("Mediation initiation failed", err);
+      setConnectionStatus('failed');
+    }
   };
 
   useEffect(() => { 
     initiatePreflight();
     return () => { 
-        if (sessionPromiseRef.current) sessionPromiseRef.current.then(s => s.close()); 
+        cleanupSession(); 
         stopAmbientMusic();
     }; 
   }, []);
 
+  // Auto-retry logic
+  useEffect(() => {
+    if (connectionStatus === 'interrupted' && reconnectAttempt < 2) {
+      const timer = setTimeout(() => {
+        setReconnectAttempt(prev => prev + 1);
+        startMediation(true);
+      }, 2000 * (reconnectAttempt + 1));
+      return () => clearTimeout(timer);
+    }
+  }, [connectionStatus, reconnectAttempt]);
+
   const getStabilityColor = () => {
+    if (connectionStatus === 'interrupted' || connectionStatus === 'failed') return 'rgba(255,255,255,0.05)';
     if (phase === 'intervention') return 'var(--accent-pink)'; 
     if (stability > 0.8) return 'var(--accent-green)'; 
     if (stability > 0.4) return '#FFCC00'; 
@@ -292,10 +351,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
              </div>
         </div>
         <button 
-            onClick={() => {
-              sensoryService.tap();
-              onClose();
-            }}
+            onClick={() => { sensoryService.tap(); onClose(); }}
             className="w-full max-w-sm py-6 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl transition-all heading-font mb-20"
         >
             Internalize & Close
@@ -322,7 +378,6 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
             <p className="text-2xl text-[var(--text-primary)] opacity-60 italic font-light leading-relaxed">
                 Before we enter the architecture of conflict, we must ensure your environment is grounded.
             </p>
-            
             <div className="space-y-6 pt-8">
                 <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest heading-font px-4">
                     <span className="opacity-30">Mic Permission</span>
@@ -336,11 +391,10 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
                     <span className="text-[var(--accent-green)]">Calibrated</span>
                 </div>
             </div>
-
             <button 
-                onClick={startMediation}
+                onClick={() => startMediation()}
                 disabled={micPermission !== 'granted'}
-                className="w-full py-6 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl disabled:opacity-10 transition-all mt-12 heading-font"
+                className="w-full py-6 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-xl disabled:opacity-10 transition-all mt-12 heading-font"
             >
                 Initiate Safe Space
             </button>
@@ -357,65 +411,101 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
         style={{ backgroundColor: getStabilityColor() }}
       />
 
-      <div className="text-center w-full max-lg z-10">
-        {phase !== 'grounding' && (
-          <header className="mb-16 animate-fade-in">
-            <h2 className="text-clamp-5xl font-light mb-4 text-[var(--text-primary)]">
-              {phase === 'mediation' ? 'The Floor.' : 'Pause.'}
-            </h2>
-            <p className="text-xs font-bold uppercase tracking-[0.4em] opacity-30 heading-font">
-                {phase === 'mediation' ? (activeSpeaker ? `${activeSpeaker}'s Turn` : 'Dialogue') : 'Rising Tension'}
-            </p>
-          </header>
-        )}
-        
-        <div className="relative h-72 flex items-center justify-center mb-12">
-            <div 
-                className="w-32 h-32 rounded-full blur-3xl transition-all duration-1000" 
-                style={{
-                    backgroundColor: getStabilityColor(),
-                    transform: `scale(${1 + (volume * 15) + (1 - stability) * 1.5})`, 
-                    opacity: 0.15 + (volume * 1.5)
-                }} 
-            />
+      <div className="text-center w-full max-lg z-10 flex flex-col items-center h-full justify-center">
+        {/* Status Indicator */}
+        <div className="absolute top-10 left-0 right-0 flex justify-center">
+          <div className="flex items-center gap-2 px-4 py-2 bg-current/5 rounded-full border border-current border-opacity-5">
+            <div className={`w-1.5 h-1.5 rounded-full ${connectionStatus === 'active' ? 'bg-[var(--accent-green)] animate-pulse' : (connectionStatus === 'initializing' || connectionStatus === 'reconnecting') ? 'bg-amber-400 animate-spin' : 'bg-red-400'}`} />
+            <span className="text-[8px] font-bold uppercase tracking-widest opacity-40 heading-font">
+              {connectionStatus === 'active' ? 'Resonance Active' : (connectionStatus === 'initializing' || connectionStatus === 'reconnecting') ? 'Syncing...' : 'Sync Drifted'}
+            </span>
+          </div>
+        </div>
+
+        {connectionStatus === 'interrupted' || connectionStatus === 'failed' ? (
+          <div className="animate-fade-in flex flex-col items-center space-y-12">
+             <div className="w-20 h-20 rounded-full border border-current border-opacity-10 flex items-center justify-center mb-4">
+                <span className="text-2xl opacity-20">~</span>
+             </div>
+             <div className="space-y-4">
+                <h2 className="text-clamp-4xl font-light">Frequency Drift.</h2>
+                <p className="text-sm italic opacity-40 max-w-[240px] mx-auto leading-relaxed">Your shared resonance has momentarily drifted. The Oracle is holding space while we realign.</p>
+             </div>
+             <button 
+                onClick={() => startMediation(true)}
+                className="px-10 py-5 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-[9px] tracking-[0.3em] shadow-xl heading-font"
+             >
+                Realign Connection
+             </button>
+             <button 
+                onClick={handleEndSession}
+                className="text-[9px] font-bold uppercase tracking-widest opacity-30 heading-font border-b border-current pb-1"
+             >
+                End Session Early
+             </button>
+          </div>
+        ) : (
+          <>
+            {phase !== 'grounding' && (
+              <header className="mb-16 animate-fade-in">
+                <h2 className="text-clamp-5xl font-light mb-4 text-[var(--text-primary)]">
+                  {phase === 'mediation' ? 'The Floor.' : 'Pause.'}
+                </h2>
+                <p className="text-xs font-bold uppercase tracking-[0.4em] opacity-30 heading-font">
+                    {phase === 'mediation' ? (activeSpeaker ? `${activeSpeaker}'s Turn` : 'Dialogue') : 'Rising Tension'}
+                </p>
+              </header>
+            )}
             
-            <div 
-                className={`w-40 h-40 rounded-full border border-current border-opacity-5 flex items-center justify-center transition-all duration-[3000ms] ${phase === 'grounding' ? 'animate-[pulse_8s_infinite] scale-[1.8] border-opacity-10' : ''}`}
-                style={{ borderColor: getStabilityColor() }}
-            >
-               {activeSpeaker && phase !== 'grounding' && (
-                 <span className="text-xs font-bold uppercase tracking-[0.2em] opacity-40 heading-font animate-fade-in">
-                   {activeSpeaker}
-                 </span>
-               )}
-               {phase === 'grounding' && (
-                 <span className="text-xs font-bold uppercase tracking-[0.4em] text-[var(--accent-green)] opacity-50 heading-font">Grounding</span>
-               )}
+            <div className="relative h-72 flex items-center justify-center mb-12">
+                <div 
+                    className="w-32 h-32 rounded-full blur-3xl transition-all duration-1000" 
+                    style={{
+                        backgroundColor: getStabilityColor(),
+                        transform: `scale(${1 + (volume * 15) + (1 - stability) * 1.5})`, 
+                        opacity: 0.15 + (volume * 1.5)
+                    }} 
+                />
+                
+                <div 
+                    className={`w-40 h-40 rounded-full border border-current border-opacity-5 flex items-center justify-center transition-all duration-[3000ms] ${phase === 'grounding' ? 'animate-[pulse_8s_infinite] scale-[1.8] border-opacity-10' : ''}`}
+                    style={{ borderColor: getStabilityColor() }}
+                >
+                  {activeSpeaker && phase !== 'grounding' && (
+                    <span className="text-xs font-bold uppercase tracking-[0.2em] opacity-40 heading-font animate-fade-in">
+                      {activeSpeaker}
+                    </span>
+                  )}
+                  {phase === 'grounding' && (
+                    <span className="text-xs font-bold uppercase tracking-[0.4em] text-[var(--accent-green)] opacity-50 heading-font">Grounding</span>
+                  )}
+                </div>
+
+                {stability < 0.7 && phase !== 'grounding' && (
+                    <div className="absolute top-0 text-xs font-bold uppercase tracking-widest text-orange-400 opacity-60 animate-pulse">
+                      Unstable Energy
+                    </div>
+                )}
             </div>
 
-            {stability < 0.7 && phase !== 'grounding' && (
-                <div className="absolute top-0 text-xs font-bold uppercase tracking-widest text-orange-400 opacity-60 animate-pulse">
-                  Unstable Energy
-                </div>
+            {phase !== 'grounding' && (
+              <div className="mb-24 px-8 min-h-[5rem] animate-fade-in">
+                  <p className="text-2xl leading-relaxed opacity-80 italic text-center font-light">
+                      {transcription || "Safe space established."}
+                  </p>
+              </div>
             )}
-        </div>
 
-        {phase !== 'grounding' && (
-          <div className="mb-24 px-8 min-h-[5rem] animate-fade-in">
-              <p className="text-2xl leading-relaxed opacity-80 italic text-center font-light">
-                  {transcription || "Safe space established."}
-              </p>
-          </div>
+            <div className="flex flex-col items-center gap-6">
+                <button 
+                    onClick={handleEndSession} 
+                    className={`text-xs font-bold uppercase tracking-widest transition-all heading-font ${phase === 'grounding' ? 'opacity-10 hover:opacity-30 mt-20' : 'opacity-30 hover:opacity-100 border-b border-transparent hover:border-current pb-2'}`}
+                >
+                    Dissolve Session
+                </button>
+            </div>
+          </>
         )}
-
-        <div className="flex flex-col items-center gap-6">
-            <button 
-                onClick={handleEndSession} 
-                className={`text-xs font-bold uppercase tracking-widest transition-all heading-font ${phase === 'grounding' ? 'opacity-10 hover:opacity-30 mt-20' : 'opacity-30 hover:opacity-100 border-b border-transparent hover:border-current pb-2'}`}
-            >
-                Dissolve Session
-            </button>
-        </div>
       </div>
       
       <style>{`

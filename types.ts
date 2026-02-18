@@ -32,7 +32,7 @@ export interface UserData {
   id: string;
   userName: string;
   partnerName: string;
-  yearsTogether: string;
+  yearsTogether: string; // "0-1", "1-3", "3-7", "7+"
   focusAreas: string[];
   partnerCode?: string;
   linkedPartnerId?: string;
