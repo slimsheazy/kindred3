@@ -1,44 +1,38 @@
 
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode, Component } from 'react';
 
-// Fix: Refined Props interface to explicitly include 'key' and 'children' for 
-// full compatibility with React usage patterns in App.tsx and to satisfy strict prop checking.
-interface Props {
+interface ErrorBoundaryProps {
   children?: ReactNode;
   fallback?: ReactNode;
   name?: string;
-  key?: React.Key;
+  // Explicitly add key to satisfy strict prop checks in some environments
+  key?: string | number | null;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error?: Error;
 }
 
 /**
  * ErrorBoundary: A protective layer for the Kindred experience.
- * Fix: Explicitly extending React.Component and declaring props/state to 
- * resolve member resolution issues in the build environment where inheritance is not fully mapped.
+ * Reverted to standard React.Component pattern to resolve property overwrite conflicts.
+ * Explicitly declaring state and using named import for Component to ensure robust inheritance.
  */
-class ErrorBoundary extends React.Component<Props, State> {
-  // Fix: Declaring state and props explicitly as they were reported as missing on the class instance.
-  public state: State;
-  public props: Props;
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public override state: ErrorBoundaryState = {
+    hasError: false
+  };
 
-  constructor(props: Props) {
+  constructor(props: ErrorBoundaryProps) {
     super(props);
-    // Fix: Initializing the state property within the constructor to satisfy property assignment.
-    this.state = {
-      hasError: false
-    };
   }
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Fix: Correctly accessing this.props, which is now explicitly declared.
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     const { name } = this.props;
     console.group(`[Kindred Resilience Engine: ${name || 'System'}]`);
     console.error("Disturbance detected:", error);
@@ -47,18 +41,15 @@ class ErrorBoundary extends React.Component<Props, State> {
   }
 
   private handleRecovery = () => {
-    // Fix: Accessing props and using setState.
     const { name } = this.props;
     if (name === 'Global Root') {
       window.location.reload();
     } else {
-      // Fix: Casting to 'any' to ensure 'setState' is accessible if base class inheritance is not correctly resolved.
-      (this as any).setState({ hasError: false, error: undefined });
+      this.setState({ hasError: false, error: undefined });
     }
   };
 
-  public render() {
-    // Fix: Destructuring state and props from the class instance via this.state and this.props.
+  public override render(): ReactNode {
     const { hasError, error } = this.state;
     const { fallback, name, children } = this.props;
 
@@ -112,8 +103,8 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Fix: Ensuring that children are returned in a type-safe manner for JSX rendering.
-    return (children as any) || null;
+    // Explicitly return null if no children to satisfy ReactNode requirements
+    return children || null;
   }
 }
 

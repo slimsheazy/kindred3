@@ -68,6 +68,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen relative bg-[var(--bg-primary)]" role="main">
       <main className="pb-32 overflow-x-hidden">
+        {/* ErrorBoundary using key to reset its internal state when view changes */}
         <ErrorBoundary name={`View: ${currentView}`} key={currentView}>
           <Suspense fallback={<LoadingScreen message="Syncing..." />}>
             {renderView()}
