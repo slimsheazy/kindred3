@@ -224,8 +224,9 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
             const source = inputCtx.createMediaStreamSource(stream);
             const scriptProcessor = inputCtx.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
-              // Use statusRef to avoid stale closure narrowing issues (TS2367)
-              if (statusRef.current !== 'active' && statusRef.current !== 'reconnecting') return;
+              // Fix: Explicitly cast statusRef.current to bypass aggressive narrowing (TS2367)
+              const currentStatus = statusRef.current as ConnectionStatus;
+              if (currentStatus !== 'active' && currentStatus !== 'reconnecting') return;
               
               const inputData = e.inputBuffer.getChannelData(0);
               let sum = 0;
