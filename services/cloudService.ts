@@ -1,3 +1,4 @@
+
 import { UserData, Goal, BondScore, ChatMessage, Activity, GrowthLog, CourseModule, MicroStep, JournalEntry, WeeklySynthesis, FoundationSummary } from '../types';
 import { isSupabaseConfigured } from './supabase';
 import * as queries from '../lib/supabase/queries';
@@ -262,7 +263,7 @@ class CloudService {
 
   subscribeToPulses(partnerCode: string, onPulse: (p: any) => void) {
     const channel = queries.createPulseChannel(partnerCode).on('broadcast', { event: 'pulse' }, ({ payload }: { payload: any }) => onPulse(payload)).subscribe();
-    return () => channel.unsubscribe();
+    return () => { channel.unsubscribe(); };
   }
 
   subscribeToPartnerSpace(partnerCode: string, onUpdate: () => void) {
@@ -357,7 +358,7 @@ class CloudService {
     const channel = queries.createPulseChannel(`quiz_handshake:${partnerCode}`)
       .on('broadcast', { event: 'handshake' }, ({ payload }: { payload: any }) => onHandshake(payload))
       .subscribe();
-    return () => channel.unsubscribe();
+    return () => { channel.unsubscribe(); };
   }
 
   /**
