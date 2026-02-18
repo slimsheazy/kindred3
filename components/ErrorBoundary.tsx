@@ -1,7 +1,7 @@
 
-// Fix: Import Component and other types explicitly from react to ensure correct inheritance
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 
+// Fix: Define Props interface without reserved 'key' prop to avoid conflicts with React internals.
 interface Props {
   children?: ReactNode;
   fallback?: ReactNode;
@@ -16,14 +16,15 @@ interface State {
 /**
  * ErrorBoundary: A protective layer for the Kindred experience.
  */
-// Fix: Inherit from Component directly to ensure TS correctly identifies inherited members like props and state
+// Fix: Use standard Component extension and explicit typing for state and props to resolve 'Property props does not exist' errors.
 class ErrorBoundary extends Component<Props, State> {
+  // Fix: Explicitly declare state on the class to ensure it's recognized by the compiler as a property of the component.
+  public state: State = {
+    hasError: false
+  };
+
   constructor(props: Props) {
     super(props);
-    // Fix: State is initialized in the constructor, inherited from Component
-    this.state = {
-      hasError: false
-    };
   }
 
   public static getDerivedStateFromError(error: Error): State {
@@ -31,7 +32,7 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Fix: Access props from the instance context
+    // Fix: Access props from the class instance using this.props, which is inherited from Component.
     const { name } = this.props;
     console.group(`[Kindred Resilience Engine: ${name || 'System'}]`);
     console.error("Disturbance detected:", error);
@@ -40,17 +41,18 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   private handleRecovery = () => {
-    // Fix: Access props and setState from the instance context
+    // Fix: Access props from the class instance using this.props in the arrow function.
     const { name } = this.props;
     if (name === 'Global Root') {
       window.location.reload();
     } else {
+      // Fix: Use this.setState inherited from Component to reset the boundary state.
       this.setState({ hasError: false, error: undefined });
     }
   };
 
   public render() {
-    // Fix: Destructure state and props for cleaner access and better type inference
+    // Fix: Destructure state and props from 'this' to correctly access inherited members.
     const { hasError, error } = this.state;
     const { fallback, name, children } = this.props;
 
@@ -104,7 +106,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Fix: Correctly return the inherited children property
+    // Fix: Correctly return children prop from the render method.
     return children || null;
   }
 }

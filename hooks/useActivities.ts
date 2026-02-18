@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { Activity, UserData } from '../types';
 import { generateActivities } from '../services/geminiService';
@@ -9,13 +10,15 @@ export const useActivities = (userData: UserData | null) => {
   const partnerCode = userData?.partnerCode || userData?.id || 'default';
   const [activeVibe, setActiveVibe] = useState('Deep');
 
-  const { data: activities = [], isLoading: loading } = useQuery({
+  const { data: activities = [], isLoading: loading, error } = useQuery({
     queryKey: ['activities', activeVibe],
     queryFn: async () => {
       const result = await generateActivities(activeVibe);
+      if (result.error) throw new Error(result.error);
       return result.data || [];
     },
     enabled: !!userData,
+    retry: 1,
   });
 
   const { data: engagedActivity = null, refetch: fetchEngaged } = useQuery({
@@ -77,6 +80,7 @@ export const useActivities = (userData: UserData | null) => {
     activities, 
     engagedActivity, 
     loading, 
+    error: error as Error | null,
     activeVibe, 
     setActiveVibe, 
     loadActivities, 

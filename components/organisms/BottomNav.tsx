@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { View } from '../../types';
 import { NavItem } from '../molecules/NavItem';
@@ -11,7 +12,8 @@ export const BottomNav: React.FC<BottomNavProps> = ({ currentView, setCurrentVie
   const navItems = [
     { view: View.Dashboard, label: 'Home' },
     { view: View.Activities, label: 'Actions' },
-    { view: View.Goals, label: 'Intent' },
+    { view: View.Quiz, label: 'Echoes' },
+    { view: View.Rituals, label: 'Rituals' },
     { view: View.Profile, label: 'Space' },
   ];
 

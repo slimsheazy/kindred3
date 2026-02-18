@@ -12,6 +12,9 @@ const ActivitiesView = lazy(() => import('./views/Activities'));
 const Goals = lazy(() => import('./views/Goals'));
 const Profile = lazy(() => import('./views/Profile'));
 const Quiz = lazy(() => import('./views/Quiz'));
+const Rituals = lazy(() => import('./views/Rituals'));
+const SalsaDeck = lazy(() => import('./views/SalsaDeck'));
+const EmotionWheel = lazy(() => import('./views/EmotionWheel'));
 const Onboarding = lazy(() => import('./views/Onboarding'));
 
 const AppContent: React.FC = () => {
@@ -44,9 +47,12 @@ const AppContent: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case View.Dashboard: return <Dashboard userData={userData} onNavigate={setCurrentView} />;
-      case View.Activities: return <ActivitiesView />;
+      case View.Activities: return <ActivitiesView onNavigate={setCurrentView} />;
       case View.Goals: return <Goals />;
       case View.Quiz: return <Quiz />;
+      case View.Rituals: return <Rituals />;
+      case View.SalsaDeck: return <SalsaDeck onBack={() => setCurrentView(View.Activities)} />;
+      case View.EmotionWheel: return <EmotionWheel onBack={() => setCurrentView(View.Activities)} />;
       case View.Profile: return (
         <Profile 
           onReset={() => setHasOnboarded(false)} 

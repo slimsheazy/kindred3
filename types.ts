@@ -7,6 +7,24 @@ export enum View {
   Goals = 'GOALS',
   Profile = 'PROFILE',
   Quiz = 'QUIZ',
+  Rituals = 'RITUALS',
+  SalsaDeck = 'SALSA_DECK',
+  EmotionWheel = 'EMOTION_WHEEL',
+}
+
+export interface SalsaCard {
+  id: string;
+  level: 'Mild' | 'Medium' | 'Hot';
+  prompt: string;
+  twist: string; // A follow-up or extra instruction
+}
+
+export interface RitualBlueprint {
+  id: string;
+  category: string;
+  partnerAnswers: Record<string, string>; // userId -> answer mapping
+  synthesis?: string;
+  lastUpdated: number;
 }
 
 export interface UserData {

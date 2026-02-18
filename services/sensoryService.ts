@@ -86,6 +86,16 @@ class SensoryService {
   }
 
   /**
+   * Emotion Resonance: Tonal feedback mapped to emotional spectrum.
+   */
+  emotionResonance(freq: number) {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(20);
+    }
+    this.playTone(freq, 'sine', 0.1, 0.5);
+  }
+
+  /**
    * Grounding Breath: rhythmic pulsing for calming interactions.
    */
   startBreathing() {

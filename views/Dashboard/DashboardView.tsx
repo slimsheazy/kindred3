@@ -9,6 +9,73 @@ import Markdown from 'markdown-to-jsx';
 import { motion, AnimatePresence } from 'framer-motion';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
+const KnowledgeMeter: React.FC<{ score: number, loading?: boolean }> = ({ score, loading }) => {
+  const size = 200;
+  const strokeWidth = 2;
+  const radius = (size / 2) - 10;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 10) * circumference;
+
+  if (loading) return (
+    <div className="w-full flex flex-col items-center py-12 animate-pulse">
+      <div className="w-40 h-40 rounded-full border border-current border-opacity-5" />
+    </div>
+  );
+
+  return (
+    <div className="w-full flex flex-col items-center py-12 group">
+      <div className="relative" style={{ width: size, height: size }}>
+        {/* Background Circle */}
+        <svg className="absolute inset-0 -rotate-90" width={size} height={size}>
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            className="opacity-5"
+          />
+          {/* Progress Circle */}
+          <motion.circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="var(--accent-green)"
+            strokeWidth={strokeWidth}
+            strokeDasharray={circumference}
+            initial={{ strokeDashoffset: circumference }}
+            animate={{ strokeDashoffset: offset }}
+            transition={{ duration: 2, ease: "circOut" }}
+            strokeLinecap="round"
+            className="drop-shadow-[0_0_8px_rgba(168,255,181,0.3)]"
+          />
+        </svg>
+
+        {/* Content */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <motion.span 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-5xl font-light tracking-tighter"
+          >
+            {Math.round(score * 10)}%
+          </motion.span>
+          <span className="text-[8px] font-bold uppercase tracking-[0.4em] opacity-30 mt-2 heading-font">World Known</span>
+        </div>
+
+        {/* Decorative Particles */}
+        <div className="absolute inset-0 pointer-events-none opacity-20">
+          <div className="absolute top-1/4 left-1/4 w-1 h-1 bg-[var(--accent-green)] rounded-full animate-ping" />
+          <div className="absolute bottom-1/4 right-1/4 w-1 h-1 bg-[var(--accent-pink)] rounded-full animate-ping [animation-delay:1s]" />
+        </div>
+      </div>
+      <p className="mt-8 text-[10px] font-bold uppercase tracking-[0.5em] opacity-40 heading-font">Love Map Integrity</p>
+    </div>
+  );
+};
+
 const BondMap: React.FC<{ scores: any[], showHistory: boolean, loading?: boolean }> = ({ scores, showHistory, loading }) => {
     const categories = ['Communication', 'Intimacy', 'Trust', 'Conflict', 'Shared Vision'];
     const size = 260;
@@ -72,6 +139,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onSelectModule,
   onSelectLesson
 }) => {
+  const knowledgeScore = bondScores.find(s => s.category === 'Knowledge')?.score || 0;
+
   return (
     <div className="px-6 py-12 max-w-xl mx-auto relative min-h-screen">
         <header className="mb-12 flex justify-between items-center text-[var(--text-primary)]">
@@ -88,6 +157,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <ErrorBoundary name="Daily Prompt Service">
           <DailyPrompt />
         </ErrorBoundary>
+
+        {/* New Knowledge Meter Section */}
+        <section className="animate-fade-in-up">
+          <KnowledgeMeter score={knowledgeScore} loading={scoresLoading} />
+        </section>
 
         <BondMap scores={bondScores} showHistory={true} loading={scoresLoading} />
         

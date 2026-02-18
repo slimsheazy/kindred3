@@ -1,8 +1,67 @@
 
 import { Type } from "@google/genai";
-import { MicroStep, Goal, QuizQuestion, Activity, AiResult } from "../../types";
+import { MicroStep, Goal, QuizQuestion, Activity, AiResult, SalsaCard } from "../../types";
 import { getAiClient, getCleanText, extractJson } from "./core";
 import * as schemas from "../../lib/schemas";
+
+export const generateEmotionSoulPrompt = async (emotion: string): Promise<AiResult<string>> => {
+  const ai = getAiClient();
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `The user has identified their current state as: "${emotion}". 
+      As a relationship coach, generate ONE deep, soulful reflection question that helps them explore this feeling 
+      specifically in the context of their relationship. The question should be intimate and non-judgmental. 
+      Return just the question string.`,
+      config: { temperature: 0.9 }
+    });
+    return { data: getCleanText(response), error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
+};
+
+export const generateSalsaCards = async (level: 'Mild' | 'Medium' | 'Hot'): Promise<AiResult<SalsaCard[]>> => {
+  const ai = getAiClient();
+  const promptContext = {
+    Mild: "Lighthearted, playful, and curious questions that build friendship. Think 'Zesty'.",
+    Medium: "Emotionally vulnerable, deep, and slightly provocative questions that build intimacy. Think 'Fuego'.",
+    Hot: "Daring, passionate, and physically intimate questions or actions that build desire. Think 'Inferno'."
+  }[level];
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Generate 5 unique relationship cards for the intensity level: "${level}". 
+      Intensity Context: ${promptContext}
+      Format: Return a JSON array of objects. Each object must have:
+      - "id": a unique string
+      - "level": "${level}"
+      - "prompt": a compelling question or task
+      - "twist": a surprising follow-up question or a specific instruction to heighten the moment.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              level: { type: Type.STRING, enum: ["Mild", "Medium", "Hot"] },
+              prompt: { type: Type.STRING },
+              twist: { type: Type.STRING }
+            },
+            required: ["id", "level", "prompt", "twist"]
+          }
+        }
+      }
+    });
+    const raw = JSON.parse(extractJson(getCleanText(response)));
+    return { data: raw, error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
+};
 
 export const generateGoalMicroSteps = async (goalTitle: string): Promise<AiResult<MicroStep[]>> => {
   const ai = getAiClient();
@@ -69,8 +128,26 @@ export const generateQuizQuestions = async (topic: string): Promise<AiResult<Qui
   try {
     const response = await ai.models.generateContent({ 
       model: 'gemini-3-flash-preview', 
-      contents: `Generate 5 insightful and collaborative questions for a couple's quiz about: "${topic}". Include multiple choice options where appropriate. Return as a JSON array.`, 
-      config: { responseMimeType: "application/json" } 
+      contents: `Generate 5 insightful and collaborative questions for a couple's assessment about: "${topic}". 
+      IMPORTANT: Draw from established relationship psychology frameworks like the Gottman Method, Attachment Theory, or Chapman's Love Languages. 
+      Ensure questions are constructive, non-judgmental, and encourage shared reflection. 
+      Include a mix of multiple choice and open-ended questions. Return as a JSON array.`, 
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              question: { type: Type.STRING },
+              type: { type: Type.STRING, enum: ["open", "multiple_choice"] },
+              options: { type: Type.ARRAY, items: { type: Type.STRING } }
+            },
+            required: ["id", "question", "type"]
+          }
+        }
+      } 
     });
     const raw = JSON.parse(extractJson(getCleanText(response)));
     const data = schemas.QuizQuestionsResponseSchema.parse(raw);
@@ -85,13 +162,32 @@ export const generateActivities = async (vibe: string): Promise<AiResult<Activit
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview', 
-      contents: `Generate 3 high-quality relationship activities based on the vibe: "${vibe}". Return as JSON.`, 
-      config: { responseMimeType: "application/json" } 
+      contents: `Generate 3 high-quality relationship activities based on the vibe: "${vibe}". Return as JSON. 
+      Each activity should be unique, engaging, and focused on building a deeper connection.`, 
+      config: { 
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              title: { type: Type.STRING },
+              category: { type: Type.STRING },
+              description: { type: Type.STRING },
+              duration: { type: Type.STRING },
+              difficulty: { type: Type.STRING }
+            },
+            required: ["id", "title", "category", "description", "duration", "difficulty"]
+          }
+        }
+      } 
     });
     const raw = JSON.parse(extractJson(getCleanText(response)));
     const data = schemas.ActivitiesResponseSchema.parse(raw);
     return { data, error: null };
   } catch (e: any) {
+    console.error("Failed to generate activities:", e);
     return { data: null, error: e.message };
   }
 };

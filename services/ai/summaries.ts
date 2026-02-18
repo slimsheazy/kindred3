@@ -1,3 +1,4 @@
+
 // Fix: Importing Type from @google/genai as it is a library enum, not a local type.
 import { Type } from "@google/genai";
 import { AiResult } from "../../types";
@@ -16,6 +17,34 @@ export const generateMediationDebrief = async (transcript: string): Promise<AiRe
     });
     const text = getCleanText(response);
     return { data: text || "The dialogue has ended in peace.", error: null };
+  } catch (e: any) {
+    return { data: null, error: e.message };
+  }
+};
+
+/**
+ * Ritual Blueprint Synthesis
+ */
+export const synthesizeRitualBlueprints = async (category: string, myAnswers: any, partnerAnswers: any): Promise<AiResult<string>> => {
+  const ai = getAiClient();
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-pro-preview',
+      contents: `Analyze these separate relationship ritual blueprints for the category: "${category}". 
+      Partner 1: ${JSON.stringify(myAnswers)}
+      Partner 2: ${JSON.stringify(partnerAnswers)}
+      
+      Task: 
+      1. Identify core alignment (where visions match).
+      2. Identify creative friction (where preferences differ).
+      3. Propose a "Unified Ritual Design" that honors both needs, specifically following Gottman Method principles for shared meaning.
+      Use soulful, architectural language and markdown formatting.`,
+      config: {
+        thinkingConfig: { thinkingBudget: 4000 }
+      }
+    });
+    const text = getCleanText(response);
+    return { data: text || "Synthesis complete.", error: null };
   } catch (e: any) {
     return { data: null, error: e.message };
   }

@@ -26,7 +26,7 @@ export const useBondScores = (userData: UserData | null) => {
   }, [userData, partnerCode, onUpdate]);
 
   const growthSummary = useMemo(() => {
-    const categories = ['Communication', 'Intimacy', 'Trust', 'Conflict', 'Shared Vision'];
+    const categories = ['Communication', 'Intimacy', 'Trust', 'Conflict', 'Shared Vision', 'Knowledge'];
     return categories.map(cat => {
         const catArr = bondScores.filter(s => s.category.toLowerCase().trim() === cat.toLowerCase().trim()).sort((a, b) => b.timestamp - a.timestamp);
         const current = catArr[0]?.score || 3.5;
