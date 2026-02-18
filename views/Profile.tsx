@@ -7,6 +7,7 @@ import { NotificationService } from '../services/notificationService';
 import { motion as motionBase, AnimatePresence } from 'framer-motion';
 import * as queries from '../lib/supabase/queries';
 import { useUser } from '../components/AppProviders';
+import { sensoryService } from '../services/sensoryService';
 
 // Fix: Cast motion to any to resolve environment-specific type errors with motion component props
 const motion = motionBase as any;
@@ -25,8 +26,8 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   
   const [partnerCodeInput, setPartnerCodeInput] = useState('');
   const [syncTimestamp, setSyncTimestamp] = useState<number>(Date.now());
-  const [foundPartner, setFoundPartner] = useState<{ id: string, userName: string } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const vibes = [
     { label: 'Neutral', emoji: '⚪' },
@@ -90,6 +91,35 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
     }
   };
 
+  const handleMerge = async () => {
+    if (!partnerCodeInput.trim() || !userData) return;
+    setIsSearching(true);
+    setError(null);
+    try {
+      const partner = await cloudService.getPartnerByCode(partnerCodeInput.trim());
+      if (partner) {
+        sensoryService.success();
+        await cloudService.linkPartner(userData.id, partner.id);
+        const updated: UserData = { 
+          ...userData, 
+          partnerCode: partner.id, 
+          partnerName: partner.userName 
+        };
+        setUserData(updated);
+        localStorage.setItem('kindred_user_data', JSON.stringify(updated));
+        setIsLinking(false);
+        showMessage(`Merged with ${partner.userName}'s Space.`);
+      } else {
+        setError("Space not found.");
+        sensoryService.shiver();
+      }
+    } catch (err) {
+      setError("Linking failed.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const enableNotifications = async () => {
     const permission = await NotificationService.requestPermission();
     setNotificationPermission(permission);
@@ -124,7 +154,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   };
 
   return (
-    <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in relative transition-colors duration-700">
+    <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in relative transition-colors duration-700 text-[var(--text-primary)]">
        <header className="mb-16">
         <h1 className="text-clamp-6xl font-light mb-2">Space.</h1>
         <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-40 heading-font">Global Synchronization</p>
@@ -144,17 +174,19 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             <div className="text-center">
               <span className="text-xs font-bold opacity-30 uppercase tracking-[0.3em] block mb-3 heading-font">Synchronized Under</span>
               <span className="text-base font-mono font-bold tracking-widest bg-black/5 dark:bg-white/5 px-8 py-4 rounded-full border border-black/5 dark:border-white/5 shadow-inner">
-                  {userData?.partnerCode || 'Individual Space'}
+                  {userData?.partnerCode === userData?.id ? 'Individual Space' : (userData?.partnerCode || 'Individual Space')}
               </span>
             </div>
 
             <div className="flex gap-6">
-              <button 
-                  onClick={() => setIsLinking(true)}
-                  className="text-xs font-bold text-[#A8FFB5] dark:text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current box-border pb-2 heading-font"
-              >
-                Merge with Partner
-              </button>
+              {(userData?.partnerCode === userData?.id || !userData?.partnerCode) && (
+                <button 
+                    onClick={() => setIsLinking(true)}
+                    className="text-xs font-bold text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current box-border pb-2 heading-font"
+                >
+                  Merge with Partner
+                </button>
+              )}
               <button 
                   onClick={toggleTheme}
                   className="text-xs font-bold opacity-40 uppercase tracking-[0.2em] border-b border-current box-border pb-2 heading-font"
@@ -164,6 +196,44 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isLinking && (
+          <motion.div 
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-16 p-10 bg-current/2 border border-current border-opacity-5 rounded-[3rem] overflow-hidden"
+          >
+            <h3 className="text-2xl font-light mb-6">Enter Partner's Code</h3>
+            <div className="flex flex-col gap-6">
+              <input 
+                type="text" 
+                value={partnerCodeInput}
+                onChange={(e) => setPartnerCodeInput(e.target.value)}
+                placeholder="Paste code here..."
+                className="w-full bg-transparent border-b border-current border-opacity-20 py-4 text-xl font-mono focus:outline-none focus:border-opacity-100 transition-all"
+              />
+              {error && <p className="text-xs text-[var(--accent-pink)] font-bold uppercase tracking-widest">{error}</p>}
+              <div className="flex gap-4">
+                <button 
+                  onClick={handleMerge}
+                  disabled={isSearching || !partnerCodeInput.trim()}
+                  className="flex-grow py-5 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl disabled:opacity-20"
+                >
+                  {isSearching ? 'Syncing...' : 'Sync Now'}
+                </button>
+                <button 
+                  onClick={() => setIsLinking(false)}
+                  className="px-8 py-5 border border-current border-opacity-10 rounded-2xl text-[10px] font-bold uppercase tracking-widest opacity-40"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="mb-16">
           <span className="text-xs font-bold uppercase tracking-widest opacity-30 mb-8 block heading-font text-center">Set Your Vibe</span>

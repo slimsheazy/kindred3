@@ -11,10 +11,13 @@ import { sensoryService } from '../services/sensoryService';
 interface OnboardingProps { onComplete: (data: UserData) => void; }
 
 export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
-  const [step, setStep] = useState<'welcome' | 'auth' | 'profile' | 'assessment' | 'intentions' | 'recovering' | 'check_email'>('welcome');
+  const [step, setStep] = useState<'welcome' | 'auth' | 'join_code' | 'profile' | 'assessment' | 'intentions' | 'recovering' | 'check_email'>('welcome');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [partnerCodeInput, setPartnerCodeInput] = useState('');
+  const [foundPartner, setFoundPartner] = useState<{ id: string, userName: string } | null>(null);
+  
   const [data, setData] = useState<UserData>({
     id: '', userName: '', partnerName: '', yearsTogether: '', focusAreas: [],
     partnerCode: '', syncStatus: 'offline', theme: 'midnight'
@@ -52,6 +55,32 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
 
+  const validateJoinCode = async () => {
+    if (!partnerCodeInput.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const partner = await cloudService.getPartnerByCode(partnerCodeInput.trim());
+      if (partner) {
+        setFoundPartner(partner);
+        setData(prev => ({ 
+          ...prev, 
+          partnerCode: partner.id, 
+          partnerName: partner.userName 
+        }));
+        sensoryService.success();
+        setStep('profile');
+      } else {
+        setError("Invite code not recognized.");
+        sensoryService.shiver();
+      }
+    } catch (err) {
+      setError("Sync failed.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const nextFromProfile = () => {
     const valid = schemas.OnboardingProfileSchema.safeParse(data);
     if (!valid.success) { 
@@ -78,7 +107,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     const finalData = { ...data, id: data.id || `user_${Date.now()}`, partnerCode: code, syncStatus: 'synced' as const };
     
     try {
-      await cloudService.initializeBondScores(code, finalScores);
+      if (!foundPartner) {
+        // Only initialize scores if we are the creator
+        await cloudService.initializeBondScores(code, finalScores);
+      }
       await cloudService.signUp(finalData);
       sensoryService.success();
       onComplete(finalData);
@@ -95,7 +127,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[var(--bg-primary)] overflow-y-auto">
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[var(--bg-primary)] overflow-y-auto text-[var(--text-primary)]">
       <div className="w-full max-w-md animate-fade-in-up py-12">
         <AnimatePresence mode="wait">
           {step === 'welcome' && (
@@ -104,11 +136,39 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               <p className="text-xl opacity-60 italic mb-12">Architecting deeper connections.</p>
               <div className="space-y-4">
                 <button onClick={() => { sensoryService.tap(); setStep('auth'); }} className="w-full border border-current py-6 rounded-full font-bold text-xs uppercase tracking-[0.4em] hover:bg-[var(--text-primary)] hover:text-[var(--bg-primary)] transition-all shadow-xl">Initiate Sync</button>
+                <button onClick={() => { sensoryService.tap(); setStep('join_code'); }} className="w-full border border-current border-opacity-20 py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] opacity-80 hover:opacity-100 transition-all">Join Existing Space</button>
                 <button onClick={() => { sensoryService.tap(); setStep('profile'); }} className="w-full py-4 text-xs font-bold uppercase tracking-widest opacity-60">Continue Offline</button>
               </div>
             </motion.div>
           )}
           
+          {step === 'join_code' && (
+            <motion.div key="jc" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-12 text-center">
+              <div className="space-y-4">
+                <h2 className="text-clamp-5xl font-light">Mirror.</h2>
+                <p className="text-lg italic opacity-60 font-light">Enter the invite code from your partner's Space settings.</p>
+              </div>
+              <div className="space-y-6">
+                <input 
+                  type="text" 
+                  value={partnerCodeInput} 
+                  onChange={(e) => setPartnerCodeInput(e.target.value)} 
+                  className="w-full bg-transparent border-b border-current text-3xl font-mono py-6 text-center focus:outline-none" 
+                  placeholder="Code..." 
+                />
+                {error && <p className="text-xs text-[var(--accent-pink)] font-bold uppercase tracking-widest">{error}</p>}
+                <button 
+                  onClick={validateJoinCode}
+                  disabled={loading || !partnerCodeInput.trim()}
+                  className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] disabled:opacity-20 shadow-2xl"
+                >
+                  {loading ? 'Finding Space...' : 'Sync Space'}
+                </button>
+              </div>
+              <button type="button" onClick={() => setStep('welcome')} className="text-xs font-bold uppercase tracking-widest opacity-30">Cancel</button>
+            </motion.div>
+          )}
+
           {step === 'auth' && (
             <form onSubmit={handleAuth} className="space-y-12">
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-transparent border-b border-current text-3xl font-light py-6 text-center" placeholder="your@email.com" />
@@ -120,19 +180,27 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
           {step === 'profile' && (
             <div className="space-y-12">
-              <h2 className="text-clamp-5xl font-light text-center">Identities.</h2>
+              <h2 className="text-clamp-5xl font-light text-center">{foundPartner ? 'Presence.' : 'Identities.'}</h2>
               <div className="space-y-6">
                 <div className="space-y-1">
                   <label className="text-[9px] font-bold uppercase tracking-widest opacity-30">Your Presence</label>
                   <input type="text" value={data.userName} onChange={(e) => setData({ ...data, userName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-4" placeholder="Your Name" />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[9px] font-bold uppercase tracking-widest opacity-30">Mirror Presence</label>
-                  <input type="text" value={data.partnerName} onChange={(e) => setData({ ...data, partnerName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-4" placeholder="Partner Name" />
-                </div>
+                {!foundPartner && (
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-bold uppercase tracking-widest opacity-30">Mirror Presence</label>
+                    <input type="text" value={data.partnerName} onChange={(e) => setData({ ...data, partnerName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-4" placeholder="Partner Name" />
+                  </div>
+                )}
+                {foundPartner && (
+                  <div className="p-6 bg-current/5 rounded-3xl border border-current border-opacity-5">
+                    <span className="text-[9px] font-bold uppercase tracking-widest opacity-30 block mb-2">Syncing With</span>
+                    <p className="text-2xl font-light italic">{foundPartner.userName}</p>
+                  </div>
+                )}
               </div>
               {error && <p className="text-xs text-[var(--accent-pink)] text-center font-bold">{error}</p>}
-              <button onClick={nextFromProfile} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Calibrate Bond</button>
+              <button onClick={nextFromProfile} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] shadow-xl">Calibrate Bond</button>
             </div>
           )}
 
@@ -162,7 +230,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
                 ))}
               </div>
 
-              <button onClick={() => { sensoryService.tap(); setStep('intentions'); }} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Continue</button>
+              <button onClick={() => { sensoryService.tap(); setStep('intentions'); }} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] shadow-xl">Continue</button>
             </div>
           )}
 
