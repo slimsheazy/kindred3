@@ -1,11 +1,12 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserData } from '../types';
 import { isSupabaseConfigured } from '../services/supabase';
 import { cloudService } from '../services/cloudService';
 import * as queries from '../lib/supabase/queries';
 import { motion, AnimatePresence } from 'framer-motion';
 import * as schemas from '../lib/schemas';
+import { sensoryService } from '../services/sensoryService';
 
 interface OnboardingProps { onComplete: (data: UserData) => void; }
 
@@ -18,8 +19,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
     id: '', userName: '', partnerName: '', yearsTogether: '', focusAreas: [],
     partnerCode: '', syncStatus: 'offline', theme: 'midnight'
   });
+  
+  // Assessment categories with 2 sub-questions each for better resolution
   const [assessment, setAssessment] = useState<Record<string, number>>({
-    'c1': 5, 'c2': 5, 'i1': 5, 'i2': 5, 't1': 5, 't2': 5, 'n1': 5, 'n2': 5, 'v1': 5, 'v2': 5
+    'c1': 5, 'c2': 5, // Communication
+    'i1': 5, 'i2': 5, // Intimacy
+    't1': 5, 't2': 5, // Trust
+    'n1': 5, 'n2': 5, // Conflict
+    'v1': 5, 'v2': 5  // Shared Vision
   });
 
   useEffect(() => {
@@ -48,12 +55,19 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
 
   const nextFromProfile = () => {
     const valid = schemas.OnboardingProfileSchema.safeParse(data);
-    if (!valid.success) { setError(valid.error.issues[0].message); return; }
+    if (!valid.success) { 
+      setError(valid.error.issues[0].message); 
+      sensoryService.shiver();
+      return; 
+    }
+    setError(null);
+    sensoryService.tap();
     setStep('assessment');
   };
 
   const finalize = async () => {
-    const code = data.partnerCode || data.id;
+    setLoading(true);
+    const code = data.partnerCode || data.id || Math.random().toString(36).substring(7);
     const finalScores = {
       'Communication': (assessment['c1'] + assessment['c2']) / 2,
       'Intimacy': (assessment['i1'] + assessment['i2']) / 2,
@@ -61,24 +75,41 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
       'Conflict': (assessment['n1'] + assessment['n2']) / 2,
       'Shared Vision': (assessment['v1'] + assessment['v2']) / 2,
     };
-    await cloudService.initializeBondScores(code, finalScores);
-    await cloudService.signUp({ ...data, syncStatus: 'synced' });
-    onComplete({ ...data, syncStatus: 'synced' });
+    
+    const finalData = { ...data, id: data.id || `user_${Date.now()}`, partnerCode: code, syncStatus: 'synced' as const };
+    
+    try {
+      await cloudService.initializeBondScores(code, finalScores);
+      await cloudService.signUp(finalData);
+      sensoryService.success();
+      onComplete(finalData);
+    } catch (err) {
+      setError("Failed to initialize space.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateAssessment = (key: string, val: number) => {
+    setAssessment(prev => ({ ...prev, [key]: val }));
+    sensoryService.tap();
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[var(--bg-primary)]">
-      <div className="w-full max-w-md animate-fade-in-up">
+    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[var(--bg-primary)] overflow-y-auto">
+      <div className="w-full max-w-md animate-fade-in-up py-12">
         <AnimatePresence mode="wait">
           {step === 'welcome' && (
-            <motion.div key="w" className="text-center">
+            <motion.div key="w" className="text-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <h1 className="text-clamp-7xl font-light mb-8">Kindred.</h1>
+              <p className="text-xl opacity-60 italic mb-12">Architecting deeper connections.</p>
               <div className="space-y-4">
-                <button onClick={() => setStep('auth')} className="w-full border border-current py-6 rounded-full font-bold text-xs uppercase tracking-[0.4em] hover:bg-[var(--text-primary)] hover:text-[var(--bg-primary)] transition-all shadow-xl">Initiate Sync</button>
-                <button onClick={() => setStep('profile')} className="w-full py-4 text-xs font-bold uppercase tracking-widest opacity-60">Continue Offline</button>
+                <button onClick={() => { sensoryService.tap(); setStep('auth'); }} className="w-full border border-current py-6 rounded-full font-bold text-xs uppercase tracking-[0.4em] hover:bg-[var(--text-primary)] hover:text-[var(--bg-primary)] transition-all shadow-xl">Initiate Sync</button>
+                <button onClick={() => { sensoryService.tap(); setStep('profile'); }} className="w-full py-4 text-xs font-bold uppercase tracking-widest opacity-60">Continue Offline</button>
               </div>
             </motion.div>
           )}
+          
           {step === 'auth' && (
             <form onSubmit={handleAuth} className="space-y-12">
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-transparent border-b border-current text-3xl font-light py-6 text-center" placeholder="your@email.com" />
@@ -87,36 +118,80 @@ export const Onboarding: React.FC<OnboardingProps> = ({ onComplete }) => {
               <button type="button" onClick={() => setStep('welcome')} className="w-full text-xs font-bold uppercase tracking-widest opacity-30 mt-4">Back</button>
             </form>
           )}
+
+          {step === 'profile' && (
+            <div className="space-y-12">
+              <h2 className="text-clamp-5xl font-light text-center">Identities.</h2>
+              <div className="space-y-6">
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold uppercase tracking-widest opacity-30">Your Presence</label>
+                  <input type="text" value={data.userName} onChange={(e) => setData({ ...data, userName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-4" placeholder="Your Name" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[9px] font-bold uppercase tracking-widest opacity-30">Mirror Presence</label>
+                  <input type="text" value={data.partnerName} onChange={(e) => setData({ ...data, partnerName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-4" placeholder="Partner Name" />
+                </div>
+              </div>
+              {error && <p className="text-xs text-[var(--accent-pink)] text-center font-bold">{error}</p>}
+              <button onClick={nextFromProfile} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Calibrate Bond</button>
+            </div>
+          )}
+
+          {step === 'assessment' && (
+            <div className="space-y-10">
+              <div className="text-center">
+                <h2 className="text-clamp-4xl font-light mb-2">Equilibrium.</h2>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] opacity-40">Assess your current shared state</p>
+              </div>
+              
+              <div className="space-y-8">
+                {[
+                  { id: 'c', label: 'Communication Frequency' },
+                  { id: 'i', label: 'Emotional Intimacy' },
+                  { id: 't', label: 'Foundational Trust' },
+                  { id: 'n', label: 'Conflict Resilience' },
+                  { id: 'v', label: 'Vision Alignment' }
+                ].map((cat) => (
+                  <div key={cat.id} className="space-y-4">
+                    <label className="text-[10px] font-bold uppercase tracking-widest opacity-60 block">{cat.label}</label>
+                    <input 
+                      type="range" min="1" max="10" step="0.5" 
+                      value={assessment[`${cat.id}1`]} 
+                      onChange={(e) => updateAssessment(`${cat.id}1`, parseFloat(e.target.value))}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <button onClick={() => { sensoryService.tap(); setStep('intentions'); }} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Continue</button>
+            </div>
+          )}
+
+          {step === 'intentions' && (
+            <div className="space-y-12 text-center">
+              <h2 className="text-clamp-5xl font-light">Threshold.</h2>
+              <p className="text-xl italic opacity-60 leading-relaxed">
+                You are about to initiate a shared space with {data.partnerName}. Are you ready to begin the architecture of your bond?
+              </p>
+              <button onClick={finalize} disabled={loading} className="w-full bg-[var(--accent-green)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em] shadow-2xl transition-all active:scale-95">
+                {loading ? 'Initiating...' : 'Initiate Unified Space'}
+              </button>
+              <button onClick={() => setStep('assessment')} className="text-xs font-bold uppercase tracking-widest opacity-30">Back to calibration</button>
+            </div>
+          )}
+
           {step === 'check_email' && (
             <motion.div key="ce" className="text-center space-y-8">
-              <h2 className="text-clamp-5xl font-light">Check your email.</h2>
-              <p className="text-xl opacity-60 font-light leading-relaxed">We sent a magic link to <span className="font-bold">{email}</span>. Click it to initiate your shared space.</p>
-              <button onClick={() => setStep('auth')} className="text-xs font-bold uppercase tracking-widest opacity-30">Wrong email? Change it</button>
+              <h2 className="text-clamp-5xl font-light">Magic Link.</h2>
+              <p className="text-xl opacity-60 font-light leading-relaxed">Check <span className="font-bold">{email}</span> to verify your presence.</p>
             </motion.div>
           )}
+
           {step === 'recovering' && (
             <motion.div key="r" className="text-center">
               <div className="w-16 h-16 border-2 border-current border-t-transparent rounded-full animate-spin mb-12 mx-auto opacity-20" />
-              <h2 className="text-clamp-5xl font-light">Rehydrating.</h2>
+              <h2 className="text-clamp-5xl font-light">Synchronizing...</h2>
             </motion.div>
-          )}
-          {step === 'profile' && (
-            <div className="space-y-12">
-              <input type="text" value={data.userName} onChange={(e) => setData({ ...data, userName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-6" placeholder="Your Name" />
-              <input type="text" value={data.partnerName} onChange={(e) => setData({ ...data, partnerName: e.target.value })} className="w-full bg-transparent border-b border-current text-4xl font-light py-6" placeholder="Partner Name" />
-              <button onClick={nextFromProfile} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Continue</button>
-            </div>
-          )}
-          {step === 'assessment' && (
-            <div className="space-y-8">
-              <p className="text-xl text-center opacity-60 font-light mb-8">Quickly assess your current bond levels...</p>
-              <button onClick={() => setStep('intentions')} className="w-full bg-[var(--accent-green)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Next</button>
-            </div>
-          )}
-          {step === 'intentions' && (
-            <div className="space-y-14">
-              <button onClick={finalize} className="w-full bg-[var(--text-primary)] text-[var(--bg-primary)] py-6 rounded-full font-bold text-xs uppercase tracking-[0.3em]">Initiate Space</button>
-            </div>
           )}
         </AnimatePresence>
       </div>

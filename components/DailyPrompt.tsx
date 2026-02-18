@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { getDailyPrompt } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
 import { UserData } from '../types';
+import { sensoryService } from '../services/sensoryService';
 
 const DailyPrompt: React.FC = () => {
   const [prompt, setPrompt] = useState<string>('');
@@ -19,22 +21,35 @@ const DailyPrompt: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => {
-    const fetchPrompt = async () => {
-      setIsLoading(true);
+  const fetchPrompt = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
       const result = await getDailyPrompt();
-      if (result.error) setError(result.error);
-      const sanitized = (result.data || "What do you appreciate about your partner today?").replace(/^["'“”]|["'“”]$/g, '').trim();
-      setPrompt(sanitized);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        const sanitized = (result.data || "What do you appreciate about your partner today?")
+          .replace(/^["'“”]|["'“”]$/g, '')
+          .trim();
+        setPrompt(sanitized);
+      }
+    } catch (e) {
+      setError("Sync Lost.");
+    } finally {
       setIsLoading(false);
-    };
-    fetchPrompt();
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPrompt();
+  }, [fetchPrompt]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (myAnswer.trim() && userData) {
       setMyAnswerSubmitted(true);
+      sensoryService.success();
       await cloudService.submitPromptAnswer(userData.partnerCode || 'default', userData.id, myAnswer);
     }
   };
@@ -50,37 +65,47 @@ const DailyPrompt: React.FC = () => {
             <div className="h-4 bg-current opacity-10 rounded-full w-full"></div>
             <div className="h-4 bg-current opacity-10 rounded-full w-4/5 mx-auto"></div>
         </div>
+      ) : error ? (
+        <div className="text-center space-y-4 px-4">
+          <p className="text-xs text-[var(--accent-pink)] uppercase font-bold tracking-widest opacity-60">Oracle Sync Disturbed</p>
+          <button 
+            onClick={fetchPrompt}
+            className="text-[9px] font-bold uppercase tracking-[0.2em] border-b border-current pb-0.5 opacity-40 hover:opacity-100 transition-opacity"
+          >
+            Reconnect Oracle
+          </button>
+        </div>
       ) : (
         <p className="text-[var(--text-primary)] font-medium text-2xl leading-snug mb-12 italic text-center px-4">
           "{prompt}"
         </p>
       )}
 
-      {error && <p className="text-[10px] text-center mb-4 text-[var(--accent-pink)] uppercase font-bold tracking-widest opacity-40">Oracle Sync Disturbed</p>}
-
-      {myAnswerSubmitted ? (
-        <div className="text-center py-10" role="status">
-          <p className="opacity-60 text-sm italic tracking-wide">Shared with {userData?.partnerName || 'Partner'}.</p>
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit} className="px-2" aria-label="Respond to daily reflection">
-          <label htmlFor="daily-reflection-answer" className="sr-only">Your reflection response</label>
-          <textarea
-            id="daily-reflection-answer"
-            value={myAnswer}
-            onChange={(e) => setMyAnswer(e.target.value)}
-            placeholder="Type your heart here..."
-            className="w-full h-40 bg-current/5 border-b border-current border-opacity-10 focus:border-opacity-60 focus:outline-none transition-all resize-none placeholder-current placeholder-opacity-20 text-xl font-light italic leading-relaxed mb-8 p-6 rounded-t-3xl"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            className="w-full bg-theme-inverted font-bold py-6 rounded-full hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-10 text-[10px] tracking-[0.3em] uppercase heading-font shadow-2xl"
-            disabled={!myAnswer.trim() || isLoading}
-          >
-            Commit to Archive
-          </button>
-        </form>
+      {!isLoading && !error && (
+        myAnswerSubmitted ? (
+          <div className="text-center py-10" role="status">
+            <p className="opacity-60 text-sm italic tracking-wide">Shared with {userData?.partnerName || 'Partner'}.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-2" aria-label="Respond to daily reflection">
+            <label htmlFor="daily-reflection-answer" className="sr-only">Your reflection response</label>
+            <textarea
+              id="daily-reflection-answer"
+              value={myAnswer}
+              onChange={(e) => setMyAnswer(e.target.value)}
+              placeholder="Type your heart here..."
+              className="w-full h-40 bg-current/5 border-b border-current border-opacity-10 focus:border-opacity-60 focus:outline-none transition-all resize-none placeholder-current placeholder-opacity-20 text-xl font-light italic leading-relaxed mb-8 p-6 rounded-t-3xl"
+              disabled={isLoading}
+            />
+            <button
+              type="submit"
+              className="w-full bg-theme-inverted font-bold py-6 rounded-full hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-10 text-[10px] tracking-[0.3em] uppercase heading-font shadow-2xl"
+              disabled={!myAnswer.trim() || isLoading}
+            >
+              Commit to Archive
+            </button>
+          </form>
+        )
       )}
     </div>
   );
