@@ -1,15 +1,12 @@
 
-import React from 'react';
+import { Database } from './database.types';
 
 export enum View {
   Dashboard = 'DASHBOARD',
-  Journal = 'JOURNAL',
   Activities = 'ACTIVITIES',
   Goals = 'GOALS',
   Profile = 'PROFILE',
-  Mediation = 'MEDIATION',
   Quiz = 'QUIZ',
-  EsotericLens = 'ESOTERIC_LENS',
 }
 
 export interface UserData {
@@ -27,12 +24,6 @@ export interface UserData {
   lastPulseReceived?: number;
   currentLessonId?: string | null;
   theme?: 'light' | 'midnight';
-}
-
-export interface FoundationSummary {
-  content: string;
-  timestamp: number;
-  entryCountAtSummary: number;
 }
 
 export interface BondScore {
@@ -61,10 +52,8 @@ export interface CourseModule {
   id: string;
   title: string;
   description: string;
-  duration: string;
   status: 'active' | 'locked' | 'completed';
   content?: Lesson[];
-  rationale?: string; // AI attribution for why this was generated
 }
 
 export interface ChatMessage {
@@ -86,22 +75,12 @@ export interface Activity {
   startedBy?: string;
 }
 
-export interface JournalEntry {
-  id: string;
-  authorId: string;
-  author: string;
-  authorImage: string;
-  date: string;
-  timestamp: number;
-  text: string;
-  image?: string;
-  themeTags?: string[];
-}
-
 export interface MicroStep {
   id: string;
   text: string;
   completed: boolean;
+  lastUpdated: number;
+  createdAt?: number;
 }
 
 export interface Goal {
@@ -110,8 +89,11 @@ export interface Goal {
   type: 'Individual' | 'Couple';
   progress: number;
   lastUpdated: number;
+  createdAt?: number;
   microSteps?: MicroStep[];
   encouragement?: string;
+  isStagnant?: boolean;
+  pivotReason?: string;
 }
 
 export interface QuizQuestion {
@@ -121,18 +103,51 @@ export interface QuizQuestion {
   options?: string[];
 }
 
-export interface QuizSession {
+/**
+ * Journaling & Memory Models
+ */
+export interface JournalEntry {
   id: string;
-  title: string;
-  questions: QuizQuestion[];
+  authorId: string;
+  author: string;
+  authorImage?: string;
+  date: string;
   timestamp: number;
+  text: string;
+  image?: string;
+  themeTags?: string[];
 }
 
+/**
+ * AI Synthesis Models
+ */
 export interface WeeklySynthesis {
   id: string;
   partnerCode: string;
   poem: string;
   insight: string;
   timestamp: number;
-  readBy: string[]; // User IDs who have seen it
+  readBy: string[];
+}
+
+export interface FoundationSummary {
+  content: string;
+  timestamp: number;
+  entryCountAtSummary: number;
+}
+
+/**
+ * Mapping Supabase Rows to Frontend Interfaces
+ */
+export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+export type BondScoreRow = Database['public']['Tables']['bond_scores']['Row'];
+export type GoalRow = Database['public']['Tables']['goals']['Row'];
+export type GrowthLogRow = Database['public']['Tables']['growth_logs']['Row'];
+
+/**
+ * Global AI Result Wrapper
+ */
+export interface AiResult<T> {
+  data: T | null;
+  error: string | null;
 }

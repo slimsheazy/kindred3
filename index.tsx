@@ -1,10 +1,11 @@
+
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+// Fix: App is a named export in App.tsx
+import { App } from './App';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Register Service Worker
-// Using a relative path 'sw.js' is the most robust way to ensure the browser 
-// registers the worker against the correct origin and scope.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -16,8 +17,6 @@ if ('serviceWorker' in navigator) {
           console.log('ServiceWorker registration successful with scope:', registration.scope);
         })
         .catch(err => {
-          // In some sandboxed environments (like iframes), service workers are blocked by design.
-          // We catch and log this gracefully to prevent app crashes.
           console.warn('ServiceWorker registration failed (this is expected in some preview environments):', err);
         });
     }
@@ -32,6 +31,8 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary name="Global Root">
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 );

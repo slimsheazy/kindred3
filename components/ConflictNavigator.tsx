@@ -1,16 +1,17 @@
+
+import { ENV } from '../lib/config';
 import React, { useEffect, useState, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob, Type, FunctionDeclaration } from '@google/genai';
-import { UserData, JournalEntry } from '../types';
-import { generateMediationDebrief, tagJournalEntry } from '../services/geminiService';
-import { cloudService } from '../services/cloudService';
-import Markdown from 'react-markdown';
+import { UserData } from '../types';
+import { generateMediationDebrief } from '../services/geminiService';
+import { sensoryService } from '../services/sensoryService';
+import Markdown from 'markdown-to-jsx';
 
 interface ConflictNavigatorProps {
   userData: UserData | null;
   onClose: () => void;
 }
 
-// SDK utility functions
 function encode(bytes: Uint8Array) {
   let binary = '';
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
@@ -111,7 +112,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setMicPermission('granted');
-      stream.getTracks().forEach(track => track.stop()); // Stop temporary stream
+      stream.getTracks().forEach(track => track.stop());
     } catch (e) {
       setMicPermission('denied');
     }
@@ -119,37 +120,20 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
 
   const handleEndSession = async () => {
     if (isSummarizing) return;
+    sensoryService.tap();
     setIsSummarizing(true);
     
-    // 1. Close the live session
     if (sessionPromiseRef.current) {
         const session = await sessionPromiseRef.current;
         session.close();
     }
     stopAmbientMusic();
 
-    // 2. Generate Debrief if there was transcription
     if (fullTranscriptRef.current.trim()) {
         try {
-            const debriefText = await generateMediationDebrief(fullTranscriptRef.current);
-            setDebrief(debriefText);
-            
-            // 3. Save as a journal entry
-            if (userData) {
-                const partnerCode = userData.partnerCode || userData.id;
-                const tags = await tagJournalEntry(debriefText);
-                const entry: JournalEntry = {
-                    id: `med-${Date.now()}`,
-                    authorId: 'KND-ORACLE',
-                    author: 'Kindred Oracle',
-                    authorImage: '',
-                    date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                    timestamp: Date.now(),
-                    text: `[Resolution Archive]: ${debriefText}`,
-                    themeTags: [...tags, 'Conflict Resolution']
-                };
-                await cloudService.saveJournalEntry(partnerCode, entry);
-            }
+            const debriefResult = await generateMediationDebrief(fullTranscriptRef.current);
+            setDebrief(debriefResult.data || debriefResult.error || "The dialogue has ended in peace.");
+            sensoryService.success();
         } catch (err) {
             console.error("Debrief generation failed", err);
             onClose();
@@ -162,8 +146,9 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
   };
 
   const startMediation = async () => {
-    if (!process.env.API_KEY || isInitializing) return;
+    if (!ENV.API_KEY || isInitializing) return;
     
+    sensoryService.tap();
     setIsInitializing(true);
     setIsPreflight(false);
 
@@ -173,7 +158,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
     
     startAmbientMusic(outputCtx);
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: ENV.API_KEY });
 
     const sessionPromise = ai.live.connect({
       model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -202,9 +187,23 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
             for (const fc of message.toolCall.functionCalls) {
               if (fc.name === 'setMediationState') {
                 const { newPhase, speakerName, tensionLevel } = fc.args as any;
-                if (newPhase) setPhase(newPhase);
-                if (speakerName !== undefined) setActiveSpeaker(speakerName);
-                if (tensionLevel !== undefined) setStability(1 - tensionLevel);
+                if (newPhase) {
+                  if (newPhase === 'intervention') sensoryService.alert();
+                  else if (newPhase === 'mediation') sensoryService.tap();
+                  setPhase(newPhase);
+                }
+                if (speakerName !== undefined) {
+                   if (speakerName !== activeSpeaker && speakerName !== null) {
+                     sensoryService.tap();
+                   }
+                   setActiveSpeaker(speakerName);
+                }
+                if (tensionLevel !== undefined) {
+                  if (tensionLevel > 0.8 && stability > 0.2) {
+                    sensoryService.shiver(); // High tension shiver
+                  }
+                  setStability(1 - tensionLevel);
+                }
                 
                 sessionPromise.then(s => s.sendToolResponse({
                   functionResponses: { id: fc.id, name: fc.name, response: { result: 'ok' } }
@@ -259,19 +258,7 @@ const ConflictNavigator: React.FC<ConflictNavigatorProps> = ({ userData, onClose
         inputAudioTranscription: {},
         tools: [{ functionDeclarations: [setMediationState] }],
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
-        systemInstruction: `You are Kindred, a master conflict mediator. You are facilitating a safe dialogue between ${userData?.userName} and ${userData?.partnerName}.
-
-OPERATIONAL PROTOCOLS:
-1. PHASE: GROUNDING. You MUST remain ABSOLUTELY SILENT. Do not speak, even if the users speak. Only observe their audio. You will only transition to MEDIATION via 'setMediationState' once you detect a steady, calm baseline or if they explicitly ask to start.
-2. PHASE: MEDIATION. You act as a silent observer. Use 'setMediationState' to track 'tensionLevel' (0 to 1). If one partner interrupts the other, increase the tensionLevel.
-3. INTERVENTION CRITERIA. You only speak IF:
-   - The tensionLevel (calculated by your assessment of their tone and interruptions) crosses 0.7.
-   - One partner is being significantly louder or aggressive.
-   - They ask for your mediation.
-   When you intervene, you must be firm but deeply loving. Use a calming directive: "Let's pause. Breathe. [Name], it is now [Name]'s turn."
-4. SPEAKER-LISTENER RULES. Only one person speaks at a time. Use 'setMediationState' to indicate who has the floor.
-
-Strict adherence to silence during GROUNDING is non-negotiable. Only intervene when the stability threshold is breached.`,
+        systemInstruction: `You are Kindred, a master conflict mediator. You are facilitating a safe dialogue between ${userData?.userName} and ${userData?.partnerName}.`,
       }
     });
     sessionPromiseRef.current = sessionPromise;
@@ -297,7 +284,7 @@ Strict adherence to silence during GROUNDING is non-negotiable. Only intervene w
       <div className="fixed inset-0 z-[100] bg-[var(--bg-primary)] flex flex-col items-center justify-center p-8 animate-fade-in text-center overflow-y-auto">
         <header className="mb-12 mt-12">
             <h2 className="text-clamp-6xl font-light mb-4 text-[var(--text-primary)]">Alchemy.</h2>
-            <p className="text-xs font-bold uppercase tracking-[0.4em] opacity-30 heading-font">Resolution Archive Created</p>
+            <p className="text-xs font-bold uppercase tracking-[0.4em] opacity-30 heading-font">Resolution Debrief Created</p>
         </header>
         <div className="max-w-xl w-full p-10 bg-current/2 border border-current border-opacity-5 rounded-[3rem] text-left animate-fade-in-up mb-12">
              <div className="prose prose-stone dark:prose-invert prose-xl italic font-light leading-relaxed text-[var(--text-primary)]">
@@ -305,8 +292,11 @@ Strict adherence to silence during GROUNDING is non-negotiable. Only intervene w
              </div>
         </div>
         <button 
-            onClick={onClose}
-            className="w-full max-w-sm py-6 bg-current text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl transition-all heading-font mb-20"
+            onClick={() => {
+              sensoryService.tap();
+              onClose();
+            }}
+            className="w-full max-w-sm py-6 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl transition-all heading-font mb-20"
         >
             Internalize & Close
         </button>
@@ -318,7 +308,7 @@ Strict adherence to silence during GROUNDING is non-negotiable. Only intervene w
     return (
       <div className="fixed inset-0 z-[100] bg-[var(--bg-primary)] flex flex-col items-center justify-center p-8 animate-fade-in text-center">
         <div className="w-16 h-16 border-2 border-current border-opacity-5 border-t-inherit rounded-full animate-spin mb-12" />
-        <h2 className="text-clamp-5xl font-light mb-4 text-[var(--text-primary)]">Etching Memory...</h2>
+        <h2 className="text-clamp-5xl font-light mb-4 text-[var(--text-primary)]">Calibrating Resonance...</h2>
         <p className="text-xs font-bold uppercase tracking-[0.4em] opacity-30 heading-font">The Oracle is synthesizing your dialogue</p>
       </div>
     );
@@ -350,7 +340,7 @@ Strict adherence to silence during GROUNDING is non-negotiable. Only intervene w
             <button 
                 onClick={startMediation}
                 disabled={micPermission !== 'granted'}
-                className="w-full py-6 bg-current text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl disabled:opacity-10 transition-all mt-12 heading-font"
+                className="w-full py-6 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-[0.3em] shadow-2xl disabled:opacity-10 transition-all mt-12 heading-font"
             >
                 Initiate Safe Space
             </button>
@@ -367,7 +357,7 @@ Strict adherence to silence during GROUNDING is non-negotiable. Only intervene w
         style={{ backgroundColor: getStabilityColor() }}
       />
 
-      <div className="text-center w-full max-w-lg z-10">
+      <div className="text-center w-full max-lg z-10">
         {phase !== 'grounding' && (
           <header className="mb-16 animate-fade-in">
             <h2 className="text-clamp-5xl font-light mb-4 text-[var(--text-primary)]">

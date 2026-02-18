@@ -1,13 +1,14 @@
 
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
+import { ENV } from '../lib/config';
 
-// Prioritize localStorage for user-provided keys, fallback to environment variables
+// LocalStorage fallbacks for preview/offline-first usage
 const getSupabaseConfig = () => {
   const localUrl = localStorage.getItem('kindred_supabase_url');
   const localKey = localStorage.getItem('kindred_supabase_key');
   
-  const url = localUrl || process.env.SUPABASE_URL || 'https://placeholder-project.supabase.co';
-  const key = localKey || process.env.SUPABASE_ANON_KEY || 'placeholder-key';
+  const url = localUrl || ENV.SUPABASE_URL || 'https://placeholder.supabase.co';
+  const key = localKey || ENV.SUPABASE_ANON_KEY || 'placeholder';
   
   return { url, key };
 };
@@ -15,17 +16,19 @@ const getSupabaseConfig = () => {
 const config = getSupabaseConfig();
 
 export const isSupabaseConfigured = 
-  config.url !== 'https://placeholder-project.supabase.co' && 
-  config.key !== 'placeholder-key' &&
+  config.url !== 'https://placeholder.supabase.co' && 
+  config.key !== 'placeholder' &&
   config.url.startsWith('https://');
 
-export const supabase = createClient(config.url, config.key);
+/**
+ * createClient: Using @supabase/ssr pattern for the browser.
+ */
+export const supabase = createBrowserClient(config.url, config.key);
 
-// Helper to update config and reload
 export const updateSupabaseConfig = (url: string, key: string) => {
   localStorage.setItem('kindred_supabase_url', url);
   localStorage.setItem('kindred_supabase_key', key);
-  window.location.reload(); // Reload to re-initialize the client and channels
+  window.location.reload();
 };
 
 export const clearSupabaseConfig = () => {

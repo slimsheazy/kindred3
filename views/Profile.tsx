@@ -1,10 +1,14 @@
+
 import React, { useState, useEffect } from 'react';
 import { UserData } from '../types';
-import { initializeGeminiContext } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
 import { isSupabaseConfigured, updateSupabaseConfig, clearSupabaseConfig } from '../services/supabase';
 import { NotificationService } from '../services/notificationService';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion as motionBase, AnimatePresence } from 'framer-motion';
+import * as queries from '../lib/supabase/queries';
+
+// Fix: Cast motion to any to resolve environment-specific type errors with motion component props
+const motion = motionBase as any;
 
 interface ProfileProps {
   onReset: () => void;
@@ -139,15 +143,17 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             localStorage.setItem('kindred_fusion_pending', 'true');
         }
 
-        initializeGeminiContext(updated);
         setIsLinking(false);
         showMessage("Handshake initiated.");
         window.location.reload();
     }
   };
 
-  const handleLogout = () => {
-    if (window.confirm("Disconnecting will clear the local session. Proceed?")) {
+  const handleLogout = async () => {
+    if (window.confirm("Disconnecting will clear the session. Proceed?")) {
+        if (isSupabaseConfigured) {
+          await queries.signOut();
+        }
         onReset();
     }
   };
@@ -180,13 +186,13 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             <div className="flex gap-6">
               <button 
                   onClick={() => setIsLinking(true)}
-                  className="text-xs font-bold text-[#A8FFB5] dark:text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current pb-2 heading-font"
+                  className="text-xs font-bold text-[#A8FFB5] dark:text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current box-border pb-2 heading-font"
               >
                 Merge with Partner
               </button>
               <button 
                   onClick={toggleTheme}
-                  className="text-xs font-bold opacity-40 uppercase tracking-[0.2em] border-b border-current pb-2 heading-font"
+                  className="text-xs font-bold opacity-40 uppercase tracking-[0.2em] border-b border-current box-border pb-2 heading-font"
               >
                 {userData?.theme === 'light' ? 'Shift to Midnight' : 'Shift to Light'}
               </button>
@@ -263,7 +269,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
               onClick={handleLogout}
               className="w-full border border-black/20 dark:border-white/20 font-bold py-7 rounded-full hover:bg-current hover:text-[var(--bg-primary)] transition-all text-xs tracking-[0.2em] uppercase heading-font shadow-sm"
           >
-              Disconnect Local Session
+              Disconnect Session
           </button>
           <div className="flex justify-center items-center gap-3">
             <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-[#A8FFB5] animate-pulse' : 'bg-gray-600'}`} />

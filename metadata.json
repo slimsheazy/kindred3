@@ -3,6 +3,6 @@
   "description": "An AI-powered space for couples to deepen their connection —powered by Kindred AI.",
   "requestFramePermissions": [
     "microphone",
-    "camera"
+    "geolocation"
   ]
 }

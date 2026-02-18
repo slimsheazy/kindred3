@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { QuizQuestion, UserData, GrowthLog } from '../types';
 import { generateQuizQuestions, interpretQuizResults, analyzeInteractionForScores } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
@@ -14,13 +13,64 @@ const Quiz: React.FC = () => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [partnerAnswers, setPartnerAnswers] = useState<any>(null);
   const [interpretation, setInterpretation] = useState('');
   const [userData, setUserData] = useState<UserData | null>(null);
   const [topicStatuses, setTopicStatuses] = useState<Record<string, TopicStatus>>({});
 
   const topics = ['Love Languages', 'Our Future', 'Memories', 'Daily Rhythms', 'Deep Desires'];
+
+  const fetchTopicStatuses = useCallback(async (user: UserData) => {
+    const code = user.partnerCode || user.id || 'default';
+    setStatusLoading(true);
+    const statuses: Record<string, TopicStatus> = {};
+    for (const t of topics) {
+        const [ans, synthesis] = await Promise.all([cloudService.getQuizAnswers(code, t), cloudService.getQuizSynthesis(code, t)]);
+        const myAns = ans.find((a: any) => a.userId === user.id);
+        const partnerAns = ans.find((a: any) => a.userId !== user.id);
+        if (synthesis) statuses[t] = 'completed';
+        else if (myAns && partnerAns) statuses[t] = 'ready';
+        else if (myAns) statuses[t] = 'waiting';
+        else statuses[t] = 'new';
+    }
+    setTopicStatuses(statuses);
+    setStatusLoading(false);
+  }, []);
+
+  const generateInsights = useCallback(async (quizTopic: string, myAns: any, pAns: any) => {
+    if (!userData || isLoading) return;
+    const partnerCode = userData.partnerCode || 'default';
+    setIsLoading(true);
+    try {
+      const resResult = await interpretQuizResults(quizTopic, Object.values(myAns), Object.values(pAns));
+      const resText = resResult.data || resResult.error || "Reflections complete.";
+      setInterpretation(resText);
+      setCurrentStep('results');
+      await cloudService.saveQuizSynthesis(partnerCode, quizTopic, resText);
+      
+      const analysisResult = await analyzeInteractionForScores(resText);
+      const updates = analysisResult.data || [];
+      if (updates.length > 0) {
+          await cloudService.batchUpdateScores(partnerCode, updates);
+          for (const update of updates) {
+              await cloudService.saveGrowthLog(partnerCode, { id: `growth-${Date.now()}`, timestamp: Date.now(), category: update.category, delta: update.delta, context: `following ${quizTopic} exploration.` });
+          }
+      }
+      fetchTopicStatuses(userData);
+    } finally { setIsLoading(false); }
+  }, [userData, isLoading, fetchTopicStatuses]);
+
+  const checkPartnerStatus = useCallback(async () => {
+    if (!userData || !topic) return;
+    const partnerCode = userData.partnerCode || 'default';
+    const existingSynthesis = await cloudService.getQuizSynthesis(partnerCode, topic);
+    if (existingSynthesis) { setInterpretation(existingSynthesis); setCurrentStep('results'); return; }
+    const allAnswers = await cloudService.getQuizAnswers(partnerCode, topic);
+    const partner = allAnswers.find((a: any) => a.userId !== userData.id);
+    const me = allAnswers.find((a: any) => a.userId === userData.id);
+    if (partner && me) generateInsights(topic, me.answers, partner.answers);
+  }, [userData, topic, generateInsights]);
 
   useEffect(() => {
     const saved = localStorage.getItem('kindred_user_data');
@@ -28,288 +78,89 @@ const Quiz: React.FC = () => {
         const parsed = JSON.parse(saved);
         setUserData(parsed);
         fetchTopicStatuses(parsed);
+        return cloudService.subscribeToQuizHandshake(parsed.partnerCode || 'default', (payload) => {
+          if (payload.userId !== parsed.id && payload.topic === topic) checkPartnerStatus();
+        });
     }
-  }, []);
-
-  const fetchTopicStatuses = async (user: UserData) => {
-    const code = user.partnerCode || user.id || 'default';
-    const statuses: Record<string, TopicStatus> = {};
-    
-    for (const t of topics) {
-        const [ans, synthesis] = await Promise.all([
-          cloudService.getQuizAnswers(code, t),
-          cloudService.getQuizSynthesis(code, t)
-        ]);
-        
-        const myAns = ans.find((a: any) => a.userId === user.id);
-        const partnerAns = ans.find((a: any) => a.userId !== user.id);
-
-        if (synthesis) statuses[t] = 'completed';
-        else if (myAns && partnerAns) statuses[t] = 'ready';
-        else if (myAns) statuses[t] = 'waiting';
-        else statuses[t] = 'new';
-    }
-    setTopicStatuses(statuses);
-  };
-
-  useEffect(() => {
-    let interval: any;
-    if (currentStep === 'waiting') {
-      interval = setInterval(() => {
-        checkPartnerStatus();
-      }, 5000);
-    }
-    return () => clearInterval(interval);
-  }, [currentStep, topic]);
+  }, [fetchTopicStatuses, topic, checkPartnerStatus]);
 
   const startQuiz = async (selectedTopic: string) => {
     const status = topicStatuses[selectedTopic];
     setTopic(selectedTopic);
-
     if (status === 'completed' || status === 'ready') {
-        resumeQuiz(selectedTopic);
-        return;
-    }
-
-    if (status === 'waiting') {
-        setCurrentStep('waiting');
-        return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    try {
-      const generated = await generateQuizQuestions(selectedTopic);
-      if (generated && generated.length > 0) {
-        setQuestions(generated);
-        setCurrentQuestionIndex(0);
-        setAnswers({});
-        setCurrentStep('quiz');
-      } else {
-        setError("The Oracle is momentarily quiet. Please check your API key.");
-      }
-    } catch (err) {
-      setError("An unexpected error occurred while architecting your quiz.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const resumeQuiz = async (selectedTopic: string) => {
-    if (!userData) return;
-    const code = userData.partnerCode || userData.id;
-    const synthesis = await cloudService.getQuizSynthesis(code, selectedTopic);
-    
-    if (synthesis) {
-        setInterpretation(synthesis);
-        setCurrentStep('results');
-    } else {
-        setIsLoading(true);
-        const ans = await cloudService.getQuizAnswers(code, selectedTopic);
-        const myAns = ans.find((a: any) => a.userId === userData.id)?.answers;
-        const partnerAns = ans.find((a: any) => a.userId !== userData.id)?.answers;
-        
-        if (myAns && partnerAns) {
-            setAnswers(myAns);
-            setPartnerAnswers(partnerAns);
-            generateInsights(selectedTopic, myAns, partnerAns);
-        } else {
-            setCurrentStep('topic');
+        const code = userData!.partnerCode || userData!.id;
+        const synth = await cloudService.getQuizSynthesis(code, selectedTopic);
+        if (synth) { setInterpretation(synth); setCurrentStep('results'); }
+        else {
+           const ans = await cloudService.getQuizAnswers(code, selectedTopic);
+           generateInsights(selectedTopic, ans.find(a=>a.userId===userData?.id).answers, ans.find(a=>a.userId!==userData?.id).answers);
         }
+        return;
     }
+    if (status === 'waiting') { setCurrentStep('waiting'); return; }
+    setIsLoading(true);
+    try {
+      const result = await generateQuizQuestions(selectedTopic);
+      if (result.data) {
+        setQuestions(result.data); setCurrentQuestionIndex(0); setAnswers({}); setCurrentStep('quiz');
+      } else {
+        setError(result.error);
+      }
+    } finally { setIsLoading(false); }
   };
 
   const handleAnswer = (questionId: string, answer: string) => {
-    if (!answer.trim()) return;
-    const updatedAnswers = { ...answers, [questionId]: answer };
-    setAnswers(updatedAnswers);
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(prev => prev + 1);
-    } else {
-      submitQuiz(updatedAnswers);
+    const updated = { ...answers, [questionId]: answer }; setAnswers(updated);
+    if (currentQuestionIndex < questions.length - 1) setCurrentQuestionIndex(prev => prev + 1);
+    else {
+      const partnerCode = userData!.partnerCode || 'default';
+      cloudService.saveQuizAnswer(partnerCode, userData!.id, topic, updated);
+      cloudService.sendQuizHandshake(partnerCode, userData!.id, topic);
+      setCurrentStep('waiting');
     }
   };
 
-  const submitQuiz = async (finalAnswers: Record<string, string>) => {
-    if (!userData) return;
-    setCurrentStep('waiting');
-    const partnerCode = userData.partnerCode || 'default';
-    await cloudService.saveQuizAnswer(partnerCode, userData.id, topic, finalAnswers);
-    fetchTopicStatuses(userData);
-    checkPartnerStatus();
-  };
-
-  const checkPartnerStatus = async () => {
-    if (!userData || !topic) return;
-    const partnerCode = userData.partnerCode || 'default';
-    const existingSynthesis = await cloudService.getQuizSynthesis(partnerCode, topic);
-    if (existingSynthesis) {
-      setInterpretation(existingSynthesis);
-      setCurrentStep('results');
-      return;
-    }
-    const allAnswers = await cloudService.getQuizAnswers(partnerCode, topic);
-    const partner = allAnswers.find((a: any) => a.userId !== userData.id);
-    const me = allAnswers.find((a: any) => a.userId === userData.id);
-    if (partner && me) {
-      setPartnerAnswers(partner.answers);
-      generateInsights(topic, me.answers, partner.answers);
-    }
-  };
-
-  const generateInsights = async (quizTopic: string, myAns: any, pAns: any) => {
-    if (!userData || isLoading) return;
-    const partnerCode = userData.partnerCode || 'default';
-    const existing = await cloudService.getQuizSynthesis(partnerCode, quizTopic);
-    if (existing) {
-        setInterpretation(existing);
-        setCurrentStep('results');
-        return;
-    }
-
-    setIsLoading(true);
-    try {
-      const res = await interpretQuizResults(quizTopic, Object.values(myAns), Object.values(pAns));
-      setInterpretation(res);
-      setCurrentStep('results');
-      await cloudService.saveQuizSynthesis(partnerCode, quizTopic, res);
-      
-      const updates = await analyzeInteractionForScores(res);
-      if (updates.length > 0) {
-          await cloudService.batchUpdateScores(partnerCode, updates);
-          
-          for (const update of updates) {
-              const log: GrowthLog = {
-                  id: `growth-${Date.now()}-${Math.random()}`,
-                  timestamp: Date.now(),
-                  category: update.category,
-                  delta: update.delta,
-                  context: `following the successful alchemy of your "${quizTopic}" exploration.`
-              };
-              await cloudService.saveGrowthLog(partnerCode, log);
-          }
-      }
-      fetchTopicStatuses(userData);
-    } catch (err) {
-      console.error("Interpretation failed", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const getStatusLabel = (t: string) => {
-    const status = topicStatuses[t];
-    switch (status) {
-        case 'waiting': return 'Awaiting Partner';
-        case 'ready': return 'Alchemy Ready';
-        case 'completed': return 'Synthesis Complete';
-        default: return 'Initiate';
-    }
-  };
-
-  if (currentStep === 'topic') {
-    return (
-      <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in">
-        <header className="mb-16">
-          <h1 className="text-clamp-6xl font-light mb-2">Quiz.</h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 heading-font">Discover each other again</p>
-        </header>
-        <p className="text-xl opacity-70 mb-12 italic font-light leading-relaxed">Select a theme for your journey into each other's worlds.</p>
-        <div className="space-y-4">
-          {topics.map(t => (
-            <button
-              key={t}
-              disabled={isLoading}
-              onClick={() => startQuiz(t)}
-              className="w-full text-left py-10 border-b border-current border-opacity-5 hover:opacity-70 transition-all flex justify-between items-center group disabled:opacity-50"
-            >
-              <div>
-                <span className="text-clamp-4xl font-light">{t}</span>
-                {topicStatuses[t] === 'completed' && (
-                    <div className="mt-1 flex items-center gap-1">
-                        <span className="text-[8px] font-bold text-[#3D8C50] dark:text-[#A8FFB5] uppercase tracking-widest">Achieved Equilibrium</span>
-                    </div>
-                )}
-              </div>
-              <span className={`text-[9px] font-bold uppercase heading-font transition-all ${topicStatuses[t] === 'ready' ? 'text-[#3D8C50] dark:text-[#A8FFB5] animate-pulse' : 'opacity-20'}`}>
-                {isLoading && topic === t ? 'Designing...' : getStatusLabel(t)}
-              </span>
-            </button>
-          ))}
-        </div>
+  if (currentStep === 'topic') return (
+    <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in text-[var(--text-primary)]">
+      <header className="mb-16"><h1 className="text-clamp-6xl font-light mb-2">Quiz.</h1></header>
+      <div className="space-y-4">
+        {statusLoading ? Array(5).fill(0).map((_, i) => (
+          <div key={i} className="h-24 animate-pulse bg-current opacity-5 border-b border-current border-opacity-5" />
+        )) : topics.map(t => (
+          <button key={t} disabled={isLoading} onClick={() => startQuiz(t)} className="w-full text-left py-10 border-b border-current border-opacity-5 flex justify-between items-center group">
+            <span className="text-clamp-4xl font-light">{t}</span>
+            <span className="text-[9px] font-bold uppercase heading-font opacity-20">{isLoading && topic === t ? '...' : topicStatuses[t]}</span>
+          </button>
+        ))}
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (currentStep === 'quiz') {
-    const q = questions[currentQuestionIndex];
-    if (!q) return null;
-    return (
-      <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in">
-        <button onClick={() => setCurrentStep('topic')} className="opacity-30 text-[10px] font-bold uppercase tracking-widest mb-12 heading-font">← Exit</button>
-        <div className="mb-12">
-            <span className="text-[8px] font-bold uppercase tracking-widest opacity-20 block mb-2 heading-font">Step {currentQuestionIndex + 1} of {questions.length}</span>
-            <h2 className="text-clamp-4xl font-light leading-tight">{q.question}</h2>
-        </div>
-        <div className="space-y-4">
-          {q.type === 'multiple_choice' && q.options ? (
-            q.options.map(opt => (
-              <button
-                key={opt}
-                onClick={() => handleAnswer(q.id, opt)}
-                className="w-full text-left p-6 border border-current border-opacity-10 rounded-full hover:bg-current hover:text-inherit transition-all text-xl font-light italic"
-              >
-                {opt}
-              </button>
-            ))
-          ) : (
-            <div className="space-y-6">
-              <textarea
-                autoFocus
-                className="w-full bg-transparent border-b border-current border-opacity-10 focus:border-inherit outline-none text-2xl font-light italic p-4 resize-none h-40 placeholder-current placeholder-opacity-20"
-                placeholder="Write from the heart..."
-              />
-              <button 
-                onClick={(e) => {
-                  const val = (e.currentTarget.previousElementSibling as HTMLTextAreaElement).value;
-                  handleAnswer(q.id, val);
-                }}
-                className="w-full py-5 bg-current text-inherit font-bold rounded-full uppercase text-xs tracking-widest heading-font"
-              >
-                Submit Answer
-              </button>
-            </div>
-          )}
-        </div>
+  if (currentStep === 'quiz') return (
+    <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in text-[var(--text-primary)]">
+      <div className="mb-12"><h2 className="text-clamp-4xl font-light">{questions[currentQuestionIndex]?.question}</h2></div>
+      <div className="space-y-4">
+        {questions[currentQuestionIndex]?.options?.map(opt => (
+          <button key={opt} onClick={() => handleAnswer(questions[currentQuestionIndex].id, opt)} className="w-full text-left p-6 border border-current border-opacity-10 rounded-full text-xl font-light italic">{opt}</button>
+        ))}
       </div>
-    );
-  }
+    </div>
+  );
 
-  if (currentStep === 'waiting') {
-    return (
-      <div className="px-6 py-12 max-w-xl mx-auto flex flex-col items-center justify-center min-h-[60vh] text-center animate-fade-in">
-        <h2 className="text-clamp-5xl font-light mb-6">Waiting.</h2>
-        <p className="text-xl opacity-70 italic mb-12">Your reflections are archived. We're waiting for {userData?.partnerName || 'your partner'} to complete their cycle.</p>
-        <div className="w-16 h-16 border-2 border-current border-opacity-5 border-t-inherit rounded-full animate-spin mb-12" />
-        <button onClick={() => setCurrentStep('topic')} className="w-64 py-5 border border-current border-opacity-20 font-bold rounded-full uppercase text-[10px] tracking-widest heading-font">Return to Space</button>
-      </div>
-    );
-  }
+  if (currentStep === 'waiting') return (
+    <div className="px-6 py-12 max-w-xl mx-auto text-center flex flex-col items-center justify-center min-h-[50vh] text-[var(--text-primary)]">
+      <h2 className="text-clamp-5xl font-light mb-6">Archived.</h2>
+      <p className="text-xl opacity-70 italic mb-12">Waiting for {userData?.partnerName || 'partner'}...</p>
+      <div className="w-12 h-12 border-2 border-current border-t-transparent animate-spin rounded-full opacity-10" />
+    </div>
+  );
 
-  if (currentStep === 'results') {
-    return (
-      <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in">
-        <header className="mb-16">
-          <h1 className="text-clamp-6xl font-light mb-2">Synthesis.</h1>
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-40 heading-font">The Alchemy of Connection</p>
-        </header>
-        <div className="lesson-content mb-16 prose dark:prose-invert prose-xl prose-stone">
-          <Markdown>{interpretation}</Markdown>
-        </div>
-        <button onClick={() => setCurrentStep('topic')} className="w-full py-5 bg-current text-inherit font-bold rounded-full uppercase text-xs tracking-widest heading-font">Return Home</button>
-      </div>
-    );
-  }
+  if (currentStep === 'results') return (
+    <div className="px-6 py-12 max-w-xl mx-auto animate-fade-in text-[var(--text-primary)]">
+      <div className="prose dark:prose-invert prose-xl"><Markdown>{interpretation}</Markdown></div>
+      <button onClick={() => setCurrentStep('topic')} className="w-full py-5 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-full mt-12 font-bold uppercase text-xs tracking-widest">Return</button>
+    </div>
+  );
   return null;
 };
 

@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { interpretSynchronicity, tagJournalEntry } from '../services/geminiService';
 import { cloudService } from '../services/cloudService';
+import { sensoryService } from '../services/sensoryService';
 import { JournalEntry, UserData } from '../types';
-import Markdown from 'react-markdown';
+import Markdown from 'markdown-to-jsx';
 
 const EsotericLens: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
@@ -23,6 +25,7 @@ const EsotericLens: React.FC = () => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      sensoryService.tap();
       const reader = new FileReader();
       reader.onloadend = () => {
         setImage(reader.result as string);
@@ -37,20 +40,24 @@ const EsotericLens: React.FC = () => {
     if (!image) return;
     setIsLoading(true);
     setArchiveSuccess(false);
+    sensoryService.startBreathing(); // Grounding during mystical analysis
     try {
       const base64Data = image.split(',')[1];
       const result = await interpretSynchronicity(base64Data);
       setInterpretation(result);
+      sensoryService.shimmer(); // Discovery successful
     } catch (error) {
       console.error(error);
     } finally {
       setIsLoading(false);
+      sensoryService.stopBreathing();
     }
   };
 
   const handleArchive = async () => {
     if (!interpretation || !image || !userData || isArchiving) return;
     setIsArchiving(true);
+    sensoryService.tap();
     try {
       const partnerCode = userData.partnerCode || userData.id;
       const tags = await tagJournalEntry(interpretation);
@@ -69,6 +76,7 @@ const EsotericLens: React.FC = () => {
 
       await cloudService.saveJournalEntry(partnerCode, entry);
       setArchiveSuccess(true);
+      sensoryService.success();
     } catch (error) {
       console.error("Failed to archive lens vision:", error);
     } finally {
@@ -77,6 +85,7 @@ const EsotericLens: React.FC = () => {
   };
 
   const reset = () => {
+    sensoryService.tap();
     setImage(null);
     setInterpretation(null);
     setArchiveSuccess(false);
