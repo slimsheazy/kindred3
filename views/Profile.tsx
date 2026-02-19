@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { UserData } from '../types';
 import { cloudService } from '../services/cloudService';
@@ -28,6 +27,9 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   const [syncTimestamp, setSyncTimestamp] = useState<number>(Date.now());
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The 'Space ID' is the partnerCode, which partitions all shared data (goals, scores, journals).
+  const spaceId = userData?.partnerCode || userData?.id;
 
   const vibes = [
     { label: 'Neutral', emoji: '⚪' },
@@ -64,19 +66,19 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
   };
 
   const copyCode = () => {
-    if (userData?.id) {
-      navigator.clipboard.writeText(userData.id);
+    if (spaceId) {
+      navigator.clipboard.writeText(spaceId);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
-      showMessage("Invite code copied to clipboard.");
+      showMessage("Space Identity copied to clipboard.");
     }
   };
 
   const shareInvite = async () => {
-    if (!userData) return;
+    if (!userData || !spaceId) return;
     const shareData = {
-      title: 'Join me on Kindred',
-      text: `Connect with me on Kindred. My invite code is: ${userData.id}`,
+      title: 'Join my Space on Kindred',
+      text: `Connect with me on Kindred. Use this Space Identity to sync our connection: ${spaceId}`,
       url: window.location.origin
     };
 
@@ -99,6 +101,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
       const partner = await cloudService.getPartnerByCode(partnerCodeInput.trim());
       if (partner) {
         sensoryService.success();
+        // Linking establishes the shared partnerCode in the DB
         await cloudService.linkPartner(userData.id, partner.id);
         const updated: UserData = { 
           ...userData, 
@@ -110,7 +113,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
         setIsLinking(false);
         showMessage(`Merged with ${partner.userName}'s Space.`);
       } else {
-        setError("Space not found.");
+        setError("Space not found. Ensure the code is correct.");
         sensoryService.shiver();
       }
     } catch (err) {
@@ -171,20 +174,29 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
         </h2>
         
         <div className="mt-10 flex flex-col items-center gap-8 w-full">
-            <div className="text-center">
-              <span className="text-xs font-bold opacity-30 uppercase tracking-[0.3em] block mb-3 heading-font">Synchronized Under</span>
-              <span className="text-base font-mono font-bold tracking-widest bg-black/5 dark:bg-white/5 px-8 py-4 rounded-full border border-black/5 dark:border-white/5 shadow-inner">
-                  {userData?.partnerCode === userData?.id ? 'Individual Space' : (userData?.partnerCode || 'Individual Space')}
-              </span>
+            <div className="text-center w-full max-w-sm">
+              <span className="text-xs font-bold opacity-30 uppercase tracking-[0.3em] block mb-3 heading-font">Space Identity</span>
+              <button 
+                onClick={copyCode}
+                className="w-full flex flex-col items-center gap-2 p-6 bg-black/5 dark:bg-white/5 rounded-[2.5rem] border border-black/5 dark:border-white/5 shadow-inner group hover:bg-black/10 transition-all"
+              >
+                  <span className="text-lg font-mono font-bold tracking-widest block">
+                      {spaceId}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest opacity-30 group-hover:opacity-60 transition-opacity">
+                    {copySuccess ? 'Copied' : 'Tap to Copy Invite Code'}
+                  </span>
+              </button>
+              <p className="text-[10px] opacity-20 mt-4 leading-relaxed uppercase tracking-wider font-bold">Share this code with your partner to synchronize your worlds.</p>
             </div>
 
             <div className="flex gap-6">
-              {(userData?.partnerCode === userData?.id || !userData?.partnerCode) && (
+              {(!userData?.partnerCode || userData.partnerCode === userData.id) && (
                 <button 
                     onClick={() => setIsLinking(true)}
                     className="text-xs font-bold text-[#A8FFB5] uppercase tracking-[0.2em] border-b border-current box-border pb-2 heading-font"
                 >
-                  Merge with Partner
+                  Merge Existing Space
                 </button>
               )}
               <button 
@@ -203,7 +215,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="mb-16 p-10 bg-current/2 border border-current border-opacity-5 rounded-[3rem] overflow-hidden"
+            className="mb-16 p-10 bg-current/2 border border-current border-opacity-5 rounded-[3rem] overflow-hidden shadow-2xl"
           >
             <h3 className="text-2xl font-light mb-6">Enter Partner's Code</h3>
             <div className="flex flex-col gap-6">
@@ -211,7 +223,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
                 type="text" 
                 value={partnerCodeInput}
                 onChange={(e) => setPartnerCodeInput(e.target.value)}
-                placeholder="Paste code here..."
+                placeholder="Paste Space ID here..."
                 className="w-full bg-transparent border-b border-current border-opacity-20 py-4 text-xl font-mono focus:outline-none focus:border-opacity-100 transition-all"
               />
               {error && <p className="text-xs text-[var(--accent-pink)] font-bold uppercase tracking-widest">{error}</p>}
@@ -221,7 +233,7 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
                   disabled={isSearching || !partnerCodeInput.trim()}
                   className="flex-grow py-5 bg-[var(--text-primary)] text-[var(--bg-primary)] rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl disabled:opacity-20"
                 >
-                  {isSearching ? 'Syncing...' : 'Sync Now'}
+                  {isSearching ? 'Syncing...' : 'Synchronize'}
                 </button>
                 <button 
                   onClick={() => setIsLinking(false)}
@@ -254,19 +266,13 @@ const Profile: React.FC<ProfileProps> = ({ onReset, onThemeChange }) => {
       <div className="mb-16 space-y-8 p-12 bg-black/2 dark:bg-white/2 border border-black/5 dark:border-white/5 rounded-[3.5rem] shadow-inner">
           <div className="space-y-8">
             <div>
-              <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Invitation</span>
-              <div className="flex flex-col gap-4">
-                <button onClick={copyCode} className="w-full flex justify-between items-center py-5 px-8 bg-black/5 dark:bg-white/5 rounded-2xl hover:bg-black/10 dark:hover:bg-white/10 transition-all border border-black/5 dark:border-white/5">
-                    <span className="font-mono text-sm font-bold tracking-wider">{userData?.id}</span>
-                    <span className="text-xs font-bold uppercase opacity-40">{copySuccess ? 'Copied' : 'Copy Code'}</span>
-                </button>
-                <button 
-                  onClick={shareInvite} 
-                  className="w-full py-5 px-8 bg-[var(--accent-green)] text-[var(--bg-primary)] rounded-2xl font-bold uppercase text-xs tracking-widest shadow-xl transition-all heading-font"
-                >
-                  Send Invitation
-                </button>
-              </div>
+              <span className="text-xs font-bold uppercase tracking-widest opacity-40 mb-4 block heading-font">Global Sharing</span>
+              <button 
+                onClick={shareInvite} 
+                className="w-full py-6 px-8 bg-[var(--accent-green)] text-[var(--bg-primary)] rounded-full font-bold uppercase text-xs tracking-widest shadow-xl transition-all heading-font active:scale-95"
+              >
+                Share Invitation
+              </button>
             </div>
 
             <div className="pt-8 border-t border-current border-opacity-5">
